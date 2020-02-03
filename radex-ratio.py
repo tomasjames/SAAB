@@ -1,11 +1,14 @@
-from decimal import Decimal
-from plotfunctions import *
 import glob
 import os
+
+from decimal import Decimal
 import math
 import numpy as np
 
 from chainconsumer import ChainConsumer
+import emcee as mc
+from random import random
+
 import matplotlib.pyplot as plt
 
 # Define constants
@@ -14,11 +17,11 @@ RADEX_PATH = "/Users/tjames/Documents/Codes/Radex"
 DIREC = "/Users/tjames/Documents/University/sgrA/"
 
 
-def get_trial_data(species, ns, tkin, nh2, f_min, f_max, N, dv, vs=None, t=None):
+def get_trial_data(species, ns, tkin, nh2, N, dv, vs=None, t=None):
     transitions, fluxes, specs = [], [], []
     for spec in species:
         # Write the radex input file
-        write_radex_input(spec, n, T, n, f_min, f_max, N, dv)
+        write_radex_input(spec, n, T, n, N, dv, f_min=300, f_max=360)
 
         #Run radex
         print('Running RADEX for {0} at n={1:1.0E} and T={2} at N={3:2.1E}'.format(spec,n,T,N))
@@ -38,7 +41,7 @@ def get_trial_data(species, ns, tkin, nh2, f_min, f_max, N, dv, vs=None, t=None)
 
 
 # Function to write the input to run Radex
-def write_radex_input(spec, ns, tkin, nh2, f_min, f_max, N, dv, vs=None, t=None):
+def write_radex_input(spec, ns, tkin, nh2, N, dv, f_min, f_max, vs=None, t=None):
     # Open the text file that constitutes Radex's input file
     if vs==None and t==None:
         infile = open('{0}/radex-input/{1}/n{2:1.0E}T{3}N{4:2.1E}.inp'.format(
@@ -93,8 +96,16 @@ def ln_prior(var, var_bounds):
 
 
 #likelihood function
-def ln_likelihood(observed_data, theoretical_data, observed_data_error):
-    chi = chi_squared(observed_data, theory, observed_data_error)
+def ln_likelihood(x, observed_data, observed_data_error):
+    # Unpack the parameters
+    n, T, nh2, N, species = x[0], x[1], x[0], x[2], x[3]
+
+    #call radex and load arrays of fluxes
+    theory = get_trial_data(species, n, T, nh2, N)
+    
+    # Determine Chi-squared statistic
+    chi = chi_squared(observed_data, theoretical_data, observed_data_error)
+    
     return -0.5*chi
 
 
@@ -112,13 +123,41 @@ sio_flux, so_flux = [], []
 sio_v, so_v = [], []
 ratio, best_fit_ratio, best_fit_index = [], [], []
 params = []
-# vs = [30, 60]
-# ns = [1e3, 1e6]
-# times = np.linspace(1e3,1e4,10)
-temp = [10, 100, 250, 500]
-ns = np.logspace(3, 6, 4)
-coldens = np.logspace(11, 15, 5)
 
+temp = [10, 500]
+ns = np.logspace(3, 6, 2)
+coldens = np.logspace(11, 15, 2)
+
+nWalkers = 6
+nDim = 3
+nSteps = int(3e4)
+sampler = mc.EnsembleSampler(nWalkers, nDim, ln_likelihood, args=[source_ratio, source_ratio_error])
+pos = []
+
+for i in range(nWalkers):
+    dens=((random()*5.0)+3.0)
+    N=((random()*6.0)+11.0)
+    T=10+(random()*45.0)
+    pos.append([T,dens,N])
+
+nBreak=int(nSteps/10)
+for counter in range(0,10):
+    sampler.reset() #lose the written chain
+    pos, prob, state = sampler.run_mcmc(pos, nBreak) #start from where we left off previously 
+    chain = np.array(sampler.chain[:,:,:]) #get chain for writing
+    chain = chain.astype(float)
+    #chain is organized as chain[walker,step,parameter]
+    for i in range(0,nWalkers):
+        for j in range(0,nBreak):
+            outString=""
+            for k in range(0,nDim):
+                outString += "{0:.5f}\t".format(chain[i][j][k])
+            f[i].write(outString+"\n")
+    print("{0:.0f}%".format((counter+1)*10))
+
+sampler.reset()
+
+'''
 for n in ns:
     for T in temp:
         for N in coldens:
@@ -164,7 +203,7 @@ for indn, n in enumerate(ns):
 
 
 
-'''
+
 bfi = stats.index(np.min(stats))
 best_fit_index.append(bfi)
 best_fit_ratio.append(ratio[int(p)][int(bfi)])
@@ -193,8 +232,7 @@ plt.legend(loc="best")
 plt.tight_layout()
 plt.savefig("ratios.png", dpi=500)
 plt.close()
-'''
-'''
+
 # Format the transition string
 transition_fmt = '$' + \
     transition[:transition.find(
