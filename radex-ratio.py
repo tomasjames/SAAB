@@ -170,57 +170,30 @@ params = []
 continueFlag = False
 nWalkers = 6
 nDim = 3 # Number of dimensions within the parameters
-nSteps = int(1e2)
+nSteps = int(1e6)
 sampler = mc.EnsembleSampler(nWalkers, nDim, ln_likelihood, args=[source_ratio, source_ratio_error, species])
 pos = []
-f = []
 
-if not os.path.exists('{0}/chains/'.format(DIREC)):
-    os.makedirs('{0}/chains/'.format(DIREC))
 if not continueFlag:
     for i in range(nWalkers):
         dens=((random()*5.0)+3.0)
         N=((random()*6.0)+11.0)
         T=10+(random()*45.0)
         pos.append([T,dens,N])
-        f.append(open("{0}/chains/mcmc_chain{1}.csv".format(DIREC,i+1),"w"))
 else:
     for i in range(nWalkers):
-        temp=np.loadtxt("{0}/chains/mcmc_chain{1}.csv".format(DIREC, i+1))
         pos.append(list(temp[-1,:]))
-        f.append(open("{0}/chains/mcmc_chain{1}.csv".format(DIREC, i+1),"a"))
 
 
-#Don't want something to go wrong mid chain and we lose everything
-#So do 10% of intended chain at a time and write out, loop.
-nBreak=int(nSteps/10)
-for counter in range(0,10):
-    sampler.reset() #lose the written chain
-    pos,prob,state=sampler.run_mcmc(pos, nBreak) #start from where we left off previously 
-    chain=np.array(sampler.chain[:,:,:]) #get chain for writing
-    chain=chain.astype(float)
-    #chain is organized as chain[walker,step,parameter]
-    for i in range(0,nWalkers):
-            for j in range(0,nBreak):
-                outString=""
-                for k in range(0,nDim):
-                    outString+="{0:.5f}\t".format(chain[i][j][k])
-                f[i].write(outString+"\n")
-    print("{0:.0f}%".format((counter+1)*10))
-
-
-fnames = glob.glob('{0}/chains/mcmc_chain*.csv'.format(DIREC))
-print(len(fnames))
-n_walkers = len(fnames)
-arrays = [np.loadtxt(f) for f in fnames]
-chain = np.concatenate(arrays)
-print(len(chain))
+pos,prob,state=sampler.run_mcmc(pos, nSteps) 
+chain=np.array(sampler.chain[:,:,:]) #get chain for writing
+chain=np.concatenate(chain.astype(float))
 
 # a_upperlim = np.percentile(chain[:,2],99)
 # t_upperlim = np.percentile(chain[:,0],99)
 
 #Name params for chainconsumer
-param1 = "Temperature / K"
+param1 = "T / K"
 param2 = "log(n$_H$) / cm$^{-3}$"
 param3 = "log(N)"
 
@@ -228,7 +201,7 @@ param3 = "log(N)"
 #maximum likelihood statistics as well as Geweke test
 file_out = "{0}/radex-plots/corner.png".format(DIREC)
 c = ChainConsumer() 
-c.add_chain(chain, parameters=[param1,param2,param3], walkers=n_walkers)
+c.add_chain(chain, parameters=[param1,param2,param3], walkers=nWalkers)
 c.configure(statistics="max", colors="#303F9F")
-c.plotter.plot(filename=fileout, figsize="column")
-# summary = c.analysis.get_summary()
+c.plotter.plot(filename=file_out, figsize="column", display=False)
+c.close()
