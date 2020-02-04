@@ -37,10 +37,18 @@ def get_trial_data(params, species):
         os.system('radex < {0}/radex-input/{1}/n{2:1.0E}T{3}N{4:2.1E}.inp\n > /dev/null'.format(
             DIREC, spec, int(n), int(T), N))
 
+        # Delete the input file (no longer required)
+        os.remove("{0}/radex-input/{1}/n{2:1.0E}T{3}N{4:2.1E}.inp".format(
+            DIREC, spec, int(n), int(T), N))
+
         # Read the radex input
         outfile = open('{0}/radex-output/{1}/n{2:1.0E}T{3}N{4:2.1E}.out'.format(
                                 DIREC, spec, int(n), int(T), N), 'r')
         temp, dens, transition, E_up, nu, flux = read_radex_output(outfile)
+
+        # Delete the output file (no longer required)
+        os.remove("{0}/radex-output/{1}/n{2:1.0E}T{3}N{4:2.1E}.out".format(
+            DIREC, spec, int(n), int(T), N))
 
         specs.append(species)        
         transitions.append(transition)
@@ -94,52 +102,53 @@ def read_radex_output(outfile):
             E_up.append(float(words[3])) # Extract the energy of the transition
             nu.append(float(words[4])) # Extract the frequency of the transition
             fluxes.append(float(words[-1])) # Extract the emitted photon flux of the transition
+    
     return temp, dens, transition, E_up, nu, fluxes
 
 
 # prior probability function 
 def ln_prior(x):
     #temp
-    if x[0]>=10 or x[0]<=500:
-        return True
-    #dens
-    elif x[1]>=3 or x[1]<=7:
-        return True
-    #N
-    elif x[2]>=11 or x[2]<=16:
-        return True
-    else:
+    if x[0]<10 or x[0]>500:
         return False
+    #dens (log space)
+    elif x[1]<3 or x[1]>6:
+        return False
+    #N (log space)
+    elif x[2]<11 or x[2]>16:
+        return False
+    else:
+        return True
 
 
 #likelihood function
 def ln_likelihood(x, observed_data, observed_data_error, species):
     # Pack the parameters in to the y array
     # 0 is T, 1 is n and 2 is N 
-    y = x[0], 10**x[1], 10**x[2]
+    y = [x[0], 10**x[1], 10**x[2]]
 
-    #call radex and load arrays of fluxes
-    specs, transitions, fluxes = get_trial_data(y, species)
-    
-    # Determine the intensity ratio by finding the correct
-    # species and transitions
-    print(transitions)
-    for i in range(len(fluxes)):
-        for j in range(len(fluxes[i])):
-            print(i)
-            print(j)
-            print(transitions[i][j])
-            if (transitions[i][j] == "7--6"):
-                SO_flux = fluxes[i][j]
-            if (transitions[i][j] == "8_7--7_6"):
-                SIO_flux = fluxes[i][j]
-    
-    theoretical_ratio = SIO_flux/SO_flux
+    if ln_prior(x):
+        #call radex and load arrays of fluxes
+        specs, transitions, fluxes = get_trial_data(y, species)
+        
+        # Determine the intensity ratio by finding the correct
+        # species and transitions and dividing the two
+        for i in range(len(fluxes)):
+            for j in range(len(fluxes[i])):
+                if (transitions[i][j] == "7--6"):
+                    SO_flux = fluxes[i][j]
+                if (transitions[i][j] == "8_7--7_6"):
+                    SIO_flux = fluxes[i][j]
+        
+        theoretical_ratio = SIO_flux/SO_flux
 
-    # Determine Chi-squared statistic
-    chi = chi_squared(observed_data, theoretical_ratio, observed_data_error)
+        # Determine Chi-squared statistic
+        chi = chi_squared(observed_data, theoretical_ratio, observed_data_error)
+        
+        return -0.5*chi
     
-    return -0.5*chi
+    else:
+        return -np.inf
 
 
 def chi_squared(observed, expected, error):
@@ -158,128 +167,68 @@ sio_v, so_v = [], []
 ratio, best_fit_ratio, best_fit_index = [], [], []
 params = []
 
-temp = [10, 500]
-ns = np.logspace(3, 6, 2)
-coldens = np.logspace(11, 15, 2)
-
+continueFlag = False
 nWalkers = 6
 nDim = 3 # Number of dimensions within the parameters
-nSteps = int(3e4)
+nSteps = int(1e2)
 sampler = mc.EnsembleSampler(nWalkers, nDim, ln_likelihood, args=[source_ratio, source_ratio_error, species])
 pos = []
+f = []
 
-for i in range(nWalkers):
-    dens=((random()*5.0)+3.0)
-    N=((random()*6.0)+11.0)
-    T=10+(random()*45.0)
-    pos.append([T,dens,N])
+if not os.path.exists('{0}/chains/'.format(DIREC)):
+    os.makedirs('{0}/chains/'.format(DIREC))
+if not continueFlag:
+    for i in range(nWalkers):
+        dens=((random()*5.0)+3.0)
+        N=((random()*6.0)+11.0)
+        T=10+(random()*45.0)
+        pos.append([T,dens,N])
+        f.append(open("{0}/chains/mcmc_chain{1}.csv".format(DIREC,i+1),"w"))
+else:
+    for i in range(nWalkers):
+        temp=np.loadtxt("{0}/chains/mcmc_chain{1}.csv".format(DIREC, i+1))
+        pos.append(list(temp[-1,:]))
+        f.append(open("{0}/chains/mcmc_chain{1}.csv".format(DIREC, i+1),"a"))
 
+
+#Don't want something to go wrong mid chain and we lose everything
+#So do 10% of intended chain at a time and write out, loop.
 nBreak=int(nSteps/10)
 for counter in range(0,10):
     sampler.reset() #lose the written chain
-    pos, prob, state = sampler.run_mcmc(pos, nBreak) #start from where we left off previously 
-    chain = np.array(sampler.chain[:,:,:]) #get chain for writing
-    chain = chain.astype(float)
+    pos,prob,state=sampler.run_mcmc(pos, nBreak) #start from where we left off previously 
+    chain=np.array(sampler.chain[:,:,:]) #get chain for writing
+    chain=chain.astype(float)
     #chain is organized as chain[walker,step,parameter]
     for i in range(0,nWalkers):
-        for j in range(0,nBreak):
-            outString=""
-            for k in range(0,nDim):
-                outString += "{0:.5f}\t".format(chain[i][j][k])
-            f[i].write(outString+"\n")
+            for j in range(0,nBreak):
+                outString=""
+                for k in range(0,nDim):
+                    outString+="{0:.5f}\t".format(chain[i][j][k])
+                f[i].write(outString+"\n")
     print("{0:.0f}%".format((counter+1)*10))
 
-sampler.reset()
 
-'''
-for n in ns:
-    for T in temp:
-        for N in coldens:
-            for specIndx, spec in enumerate(species):
-                try:
-                    outfile = open('{0}/radex-output/{1}/n{2:1.0E}T{3}N{4:2.1E}.out'.format(
-                                DIREC, spec, int(n), int(T), N), 'r')
-                except FileNotFoundError:
-                    break
+fnames = glob.glob('{0}/chains/mcmc_chain*.csv'.format(DIREC))
+print(len(fnames))
+n_walkers = len(fnames)
+arrays = [np.loadtxt(f) for f in fnames]
+chain = np.concatenate(arrays)
+print(len(chain))
 
-                # Read Radex data
-                T_kin, dens, transitions, E_up, nu, flux = read_radex_output(outfile)
+# a_upperlim = np.percentile(chain[:,2],99)
+# t_upperlim = np.percentile(chain[:,0],99)
 
-                for indx, transition in enumerate(transitions):
-                    if (spec == "SIO" and transition == "7--6"):
-                        sio_flux = flux[indx]
-                    elif (spec == "SO" and transition == "8_7--7_6"):
-                        so_flux = flux[indx]
+#Name params for chainconsumer
+param1 = "Temperature / K"
+param2 = "log(n$_H$) / cm$^{-3}$"
+param3 = "log(N)"
 
-            # Determine line ratio
-            if sio_flux == 0.0 or so_flux == 0.0:
-                break
-            else:
-                ratio.append(sio_flux/so_flux)
-                # Store physical parameters for later
-                params.append([n, T, N])
-
-stats = []
-
-# Determine best fit and likelihood function
-iter = -1
-for indn, n in enumerate(ns):
-    for indT, T in enumerate(temp):
-        for indN, N in enumerate(coldens):
-            iter += 1
-            chi = chi_squared(source_ratio, ratio[iter], source_ratio_error)
-            # Ensure that if chi is NaN, it's set to a large enough number not to be 
-            # mistaken
-            if math.isnan(chi):
-                stats.append(1e10)
-            else:
-                stats.append(chi)
-
-
-
-
-bfi = stats.index(np.min(stats))
-best_fit_index.append(bfi)
-best_fit_ratio.append(ratio[int(p)][int(bfi)])
-stats = []
-
-# Plot the best fitting parameters
-for count,index in enumerate(best_fit_index):
-    n = str(int(params[index][0]))
-    n = '%.2E' % Decimal(n)
-    n_power = len(n)-len(n.rstrip('0'))
-    v = int(params[index][1])
-    if times[count] == 4000.0:
-        continue
-    else:
-        plt.plot(times[count], best_fit_ratio[count], linestyle="None", marker='x', label="v={0} km/s  n={1} /cm3".format(str(v), str(n)))
-
-# Plot UCLCHEM
-# sim_times, dens, temp, av, specAbundances = read_uclchem("../output/cshock/data/v{}", ["SO", "SIO"])
-
-plt.plot(times, np.linspace(source_ratio,source_ratio,len(times)), linestyle='--', label="Observed ratio")
-# plt.axvspan(xmin=times[0], xmax=times[-1], ymin=0.56, ymax=0.64, color='r', alpha=0.5)
-plt.xlabel("t (years)")
-plt.ylabel("I$_{SiO}$/I$_{SO}$")
-plt.title("J1")
-plt.legend(loc="best")
-plt.tight_layout()
-plt.savefig("ratios.png", dpi=500)
-plt.close()
-
-# Format the transition string
-transition_fmt = '$' + \
-    transition[:transition.find(
-        '-')] + '$--$' + transition[transition.find('-')+2:] + '$'
-
-ax = plt.subplot()
-ax.set_yscale('log')
-plt.plot(nu[indx], flux[indx], '+', label='{0}({1}) RT'.format(str(spec), transition_fmt))
-plt.errorbar(source_nu, source_T_l, yerr=source_T_l_err, marker='x', label='{0} N7b'.format(spec))
-plt.xlabel('$f$ (GHz)')
-plt.ylabel('$F$ (mJy)')
-plt.legend(loc='best')
-plt.savefig(
-    '{0}/radex-plots/{1}/v{2}n{3}/{4}-t{5}.pdf'.format(DIREC, spec, int(v), int(n), str(transition), int(time)))
-plt.close()
-'''
+#Chain consumer plots posterior distributions and calculates
+#maximum likelihood statistics as well as Geweke test
+file_out = "{0}/radex-plots/corner.png".format(DIREC)
+c = ChainConsumer() 
+c.add_chain(chain, parameters=[param1,param2,param3], walkers=n_walkers)
+c.configure(statistics="max", colors="#303F9F")
+c.plotter.plot(filename=fileout, figsize="column")
+# summary = c.analysis.get_summary()
