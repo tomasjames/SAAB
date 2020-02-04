@@ -14,12 +14,21 @@ import matplotlib.pyplot as plt
 # Define constants
 jy = 1e-23
 RADEX_PATH = "/Users/tjames/Documents/Codes/Radex"
-DIREC = "/Users/tjames/Documents/University/sgrA/"
+DIREC = "/Users/tjames/Documents/University/SAAB"
 
 
-def get_trial_data(species, ns, tkin, nh2, N, dv, vs=None, t=None):
+def get_trial_data(params, species):
     transitions, fluxes, specs = [], [], []
+    T, n, N = params[0], params[1], params[2]
     for spec in species:
+        # Set the line width
+        if spec == "SO":
+            dv = 15.0  # Line width (km/s)
+        elif spec == "SIO":
+            dv = 13.9
+        else:
+            dv = 10.0
+
         # Write the radex input file
         write_radex_input(spec, n, T, n, N, dv, f_min=300, f_max=360)
 
@@ -42,6 +51,7 @@ def get_trial_data(species, ns, tkin, nh2, N, dv, vs=None, t=None):
 
 # Function to write the input to run Radex
 def write_radex_input(spec, ns, tkin, nh2, N, dv, f_min, f_max, vs=None, t=None):
+    tbg=2.73
     # Open the text file that constitutes Radex's input file
     if vs==None and t==None:
         infile = open('{0}/radex-input/{1}/n{2:1.0E}T{3}N{4:2.1E}.inp'.format(
@@ -88,28 +98,52 @@ def read_radex_output(outfile):
 
 
 # prior probability function 
-def ln_prior(var, var_bounds):
-    if bound[0] <= var <= bound[1]:
+def ln_prior(x):
+    #temp
+    if x[0]>=10 or x[0]<=500:
+        return True
+    #dens
+    elif x[1]>=3 or x[1]<=7:
+        return True
+    #N
+    elif x[2]>=11 or x[2]<=16:
         return True
     else:
         return False
 
 
 #likelihood function
-def ln_likelihood(x, observed_data, observed_data_error):
-    # Unpack the parameters
-    n, T, nh2, N, species = x[0], x[1], x[0], x[2], x[3]
+def ln_likelihood(x, observed_data, observed_data_error, species):
+    # Pack the parameters in to the y array
+    # 0 is T, 1 is n and 2 is N 
+    y = x[0], 10**x[1], 10**x[2]
 
     #call radex and load arrays of fluxes
-    theory = get_trial_data(species, n, T, nh2, N)
+    specs, transitions, fluxes = get_trial_data(y, species)
     
+    # Determine the intensity ratio by finding the correct
+    # species and transitions
+    print(transitions)
+    for i in range(len(fluxes)):
+        for j in range(len(fluxes[i])):
+            print(i)
+            print(j)
+            print(transitions[i][j])
+            if (transitions[i][j] == "7--6"):
+                SO_flux = fluxes[i][j]
+            if (transitions[i][j] == "8_7--7_6"):
+                SIO_flux = fluxes[i][j]
+    
+    theoretical_ratio = SIO_flux/SO_flux
+
     # Determine Chi-squared statistic
-    chi = chi_squared(observed_data, theoretical_data, observed_data_error)
+    chi = chi_squared(observed_data, theoretical_ratio, observed_data_error)
     
     return -0.5*chi
 
 
 def chi_squared(observed, expected, error):
+    print(expected)
     return ((observed - expected)**2)/((error)**2)
 
 
@@ -129,9 +163,9 @@ ns = np.logspace(3, 6, 2)
 coldens = np.logspace(11, 15, 2)
 
 nWalkers = 6
-nDim = 3
+nDim = 3 # Number of dimensions within the parameters
 nSteps = int(3e4)
-sampler = mc.EnsembleSampler(nWalkers, nDim, ln_likelihood, args=[source_ratio, source_ratio_error])
+sampler = mc.EnsembleSampler(nWalkers, nDim, ln_likelihood, args=[source_ratio, source_ratio_error, species])
 pos = []
 
 for i in range(nWalkers):
