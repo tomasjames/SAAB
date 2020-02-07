@@ -148,8 +148,6 @@ def ln_likelihood(x, observed_data, observed_data_error, species):
                 if (transitions[i][j] == "8_7--7_6"):
                     SIO_flux = fluxes[i][j]
 
-        # TODO output the ratio to a file so as to check the ratio manually        
-        ratio_file = open("{0}/radex-output/ratios.csv".format(DIREC),"w")
         theoretical_ratio = SIO_flux/SO_flux
         ratio_file.write("%f %f %f %f %f\n" % (theoretical_ratio, x[0], x[1], x[2], x[3]))
 
@@ -183,8 +181,11 @@ if __name__ == '__main__':
     continueFlag = False
     nWalkers = 8
     nDim = 4 # Number of dimensions within the parameters
-    nSteps = int(1e2)
+    nSteps = int(1e5)
     
+    # TODO output the ratio to a file so as to check the ratio manually        
+    ratio_file = open("{0}/radex-output/ratios.csv".format(DIREC),"w")
+
     with Pool() as pool:
         sampler = mc.EnsembleSampler(nWalkers, nDim, ln_likelihood, args=[source_ratio, source_ratio_error, species], pool=pool)
         pos = []
@@ -211,7 +212,7 @@ if __name__ == '__main__':
         nBreak=int(nSteps/10)
         for counter in range(0,10):
             sampler.reset() #lose the written chain
-            pos,prob,state = sampler.run_mcmc(pos, nBreak) #start from where we left off previously 
+            pos,prob,state = sampler.run_mcmc(pos, nBreak, progress=True) #start from where we left off previously 
             chain = np.array(sampler.chain[:,:,:]) #get chain for writing
             chain = chain.astype(float)
             #chain is organized as chain[walker,step,parameter]
@@ -238,10 +239,10 @@ if __name__ == '__main__':
         # Determine the length of the first chain (assuming all chains are the same length)
         chain_length = len(np.loadtxt(fnames[0]))
 
-        # Throw away the first 10% or so of samples so as to avoid considering initial burn-in period
+        # Throw away the first 20% or so of samples so as to avoid considering initial burn-in period
         # And concatenate the chain so as chain is contiguous array
         # TODO Add Geweke test to ensure convergence has occured outside of burn-in period
-        arrays = [np.loadtxt(f)[int(chain_length/10):] for f in fnames] 
+        arrays = [np.loadtxt(f)[int(chain_length*0.2):] for f in fnames] 
         chain = np.concatenate(arrays)
 
         #Name params for chainconsumer (i.e. axis labels)
