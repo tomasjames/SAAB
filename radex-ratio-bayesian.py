@@ -104,7 +104,7 @@ def read_radex_output(outfile):
             transition.append(str(words[0])+str(words[1])+str(words[2])) # Extract the transition
             E_up.append(float(words[3])) # Extract the energy of the transition
             nu.append(float(words[4])) # Extract the frequency of the transition
-            fluxes.append(float(words[-1])) # Extract the emitted photon flux of the transition
+            fluxes.append(float(words[-5])) # Extract the emitted photon flux of the transition in K
     
     return temp, dens, transition, E_up, nu, fluxes
 
@@ -185,7 +185,7 @@ if __name__ == '__main__':
     
     # TODO output the ratio to a file so as to check the ratio manually        
     ratio_file = open("{0}/radex-output/ratios.csv".format(DIREC),"w")
-
+    
     with Pool() as pool:
         sampler = mc.EnsembleSampler(nWalkers, nDim, ln_likelihood, args=[source_ratio, source_ratio_error, species], pool=pool)
         pos = []
