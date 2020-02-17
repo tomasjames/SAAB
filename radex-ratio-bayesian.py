@@ -52,10 +52,6 @@ def get_trial_data(params, species):
             transitions.append(transition[indx])
             wavs.append(wav[indx])
             flux_dens.append((flux[indx]/linewidth_f)) # Converts the fluxes to flux density in ergs/cm2/s/Hz
-            # if transition[indx] == "8--7":
-            #     print("linewidth={}".format(linewidth_f))
-            #     print("flux[{0}]={1}".format(indx, flux[indx]))
-            #     print("flux[{0}]/linewidth={1}".format(indx, flux[indx]/linewidth_f))
 
     return specs, transitions, wavs, flux_dens
 
@@ -160,7 +156,7 @@ def ln_likelihood(x, observed_data, observed_data_error, species):
         prediction_file.write("%f %f %f %f %f %f\n" % (SIO_flux, SO_flux, x[0], x[1], x[2], x[3]))
 
         # Determine Chi-squared statistic
-        chi = chi_squared(observed_data, theoretical_data, observed_data_error)
+        chi = chi_squared(theoretical_data, observed_data, observed_data_error)
         
         return -0.5*chi
     
