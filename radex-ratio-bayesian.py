@@ -210,10 +210,14 @@ if __name__ == '__main__':
     source_flux_error_Jy = [flux_error/1e-3 for flux_error in source_flux_error_mJy]
     '''
 
+        source_flux_error_K.append((source_flux_error_mJy[specIndx]*u.mJy/source_beam_area).to(
+                u.K, equivalencies = equiv).value)
+    '''
+    
     continueFlag = False
     nWalkers = 8
     nDim = 4 # Number of dimensions within the parameters
-    nSteps = int(1e5)
+    nSteps = int(1e2)
     
     prediction_file = open("{0}/radex-output/predictions.csv".format(DIREC),"w")
     

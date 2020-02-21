@@ -2,4 +2,8 @@ radex-input/*
 radex-output/*
 radex-plots/*
 radex.log
+<<<<<<< HEAD
 chains*
+=======
+chains*
+>>>>>>> 5c2fa70e2e396e9b74a105312b0374ca16884653
