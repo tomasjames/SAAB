@@ -15,10 +15,12 @@ import matplotlib.pyplot as plt
 
 # Define constants
 DIREC = os.getcwd()
-RADEX_PATH = "{0}/../Radex".format(DIREC)
+# RADEX_PATH = "{0}/../Radex".format(DIREC)
+RADEX_PATH = "/Users/tjames/Documents/Codes/Radex"
 
 
-def get_trial_data(params, species, transitions, transition_freqs):
+
+def get_trial_data(params, species, transitions, transition_freqs, linewidths):
     # Declare dictionary to hold trial data
     trial_data = {
         'species': [],
@@ -35,13 +37,11 @@ def get_trial_data(params, species, transitions, transition_freqs):
 
         # Set the line width and column density
         if spec == "SIO":
-            dv = 11.3  # Line width (km/s)
             N = N_sio
+            dv = linewidths[0]
         elif spec == "SO":
-            dv = 9.23
             N = N_so
-        else:
-            dv = 17.5
+            dv = linewidths[1]
 
         # Write the radex input file
         write_radex_input(spec, n, T, n, N, dv, f_min=300, f_max=360)
@@ -56,16 +56,12 @@ def get_trial_data(params, species, transitions, transition_freqs):
         # Determine the transition wavelength (in m) from supplied frequency 
         # (this is more accurate than the Radex determined transition frequency)
         transition_wav = 3e8/(transition_freqs[spec_indx]*1e9)
-        print("transition_wav=", transition_wav)
 
         # Convert the linewidth to frequency space
         linewidth_f = (dv*1e3)/(transition_wav) # dv in km/s so convert to m/s
-        print("linewidth_f=", linewidth_f)
+        # print("linewidth_f=", linewidth_f)
         
         # Determine the flux density
-        print("flux[spec_indx]=",flux[spec_indx])
-        print("linewidth_f=", linewidth_f)
-        print("flux[spec_indx]/linewidth_f=",flux[spec_indx]/linewidth_f)
         trial_data['flux_dens'].append(flux[spec_indx]/linewidth_f) # Converts the fluxes to flux density in ergs/cm2/s/Hz
 
     return trial_data
@@ -116,7 +112,7 @@ def read_radex_output(spec, n, T, N):
         if (words[1] == "--"):  
             transition.append(str(words[0])+str(words[1])+str(words[2])) # Extract the transition
             E_up.append(float(words[3])) # Extract the energy of the transition
-            wav.append(float(words[4])) # Extract the frequency of the transition
+            wav.append(float(words[4])) # Extract the wavelength of the transition
             fluxes.append(float(words[-1])) # Extract the integrated flux of the transition in cgs
     
     # Delete the input file (no longer required)
@@ -136,20 +132,20 @@ def ln_prior(x):
     if x[0]<10. or x[0]>1000.:
         return False
     #dens (log space)
-    elif x[1]<0. or x[1]>7.:
+    elif x[1]<2. or x[1]>6.:
         return False
     #N_sio (log space)
-    elif x[2]<9. or x[2]>16.:
+    elif x[2]<11. or x[2]>19.:
         return False
     #N_so (log space)
-    elif x[3]<9. or x[3]>16.:
+    elif x[3]<11. or x[3]>19.:
         return False
     else:
         return True
 
 
 #likelihood function
-def ln_likelihood(x, observed_data, observed_data_error, species, transitions, transition_freqs):
+def ln_likelihood(x, observed_data, observed_data_error, species, transitions, transition_freqs, linewidths):
 
     # Declare a dictionary to hold data
     theoretical_data = {}
@@ -166,12 +162,12 @@ def ln_likelihood(x, observed_data, observed_data_error, species, transitions, t
     if ln_prior(x):
 
         #call radex to determine flux of given transitions
-        trial_data = get_trial_data(y, species, transitions, transition_freqs)
+        trial_data = get_trial_data(y, species, transitions, transition_freqs, linewidths)
     
         theoretical_data['spec'] = trial_data['species']
         theoretical_data['flux_dens'] = [(data/1e-23) for data in trial_data['flux_dens']] # Converts from ergs/cm2/s/Hz to Jy
 
-        # Determine 3-squared statistic and write it to file
+        # Determine chi-squared statistic and write it to file
         chi = chi_squared(theoretical_data['flux_dens'], observed_data,  observed_data_error)
         prediction_file.write("{0} \t {1} \t {2} \t {3} \t {4} \t {5} \t {6} \n".format(theoretical_data['flux_dens'][0], theoretical_data['flux_dens'][1], chi, x[0], x[1], x[2], x[3]))
 
@@ -188,6 +184,75 @@ def chi_squared(observed, expected, error):
     return sum
 
 
+def boltzmann_column_density(nu, int_intensity, A_ul, g_u, Z, E_u, T):
+    '''
+    Inputs:
+        g_u: (2J+1)
+        Z: Partition function
+        E_u: Upper state energy (in K)
+        T: Excitation temperature (in K)
+    Outputs:
+        N
+    '''
+
+    k = 1.38064852e-23 # m2 kg s-2 K-1
+    h = 6.62607015e-34 #J s
+
+    # Upper state column density
+    N_u = (8*np.pi*k*(nu**3)*int_intensity)/(h*((3e8)**3)*A_ul)
+
+    return N_u*(g_u/Z)*np.exp((E_u)/(T))
+
+
+def column_density_constraints(observed_data, sio_data, so_data):
+
+    local_conditions = reset_dict()
+    physical_conditions = []
+
+    for indx, spec in enumerate(observed_data['species']):
+        print(spec)
+        # Convert the linewidth in km/s to frequency space
+        linewidth_wav = 3e8/(observed_data['transition_freqs'][indx]*(1e9))
+        nu = (observed_data['linewidths'][indx]*1e3)/(linewidth_wav) # dv in km/s so convert to m/s
+        int_intensity = 1.0645*observed_data['source_flux_Jy'][indx]*(nu)
+
+        if spec == "SIO":
+            data = sio_data
+        elif spec == "SO":
+            data = so_data    
+            
+        A_ul = data['A_ul']
+        g_u = data['g_u']
+        E_u = data['E_u']
+        
+        for indT, temp in enumerate(sio_data['T']):
+            Z = data['Z'][indT]
+            T = data['T'][indT]
+
+            N = boltzmann_column_density(nu, int_intensity, A_ul, g_u, Z, E_u, T)
+            local_conditions['species'] = spec
+            local_conditions['intensity'] = int_intensity
+            local_conditions['T'] = T
+            local_conditions['N'] = N
+    
+            physical_conditions.append(local_conditions)
+            
+            # Reset the dictionary
+            local_conditions = reset_dict()
+
+    return physical_conditions
+
+
+def reset_dict():
+    local_conditions = {
+        'species': "",
+        'intensity': 0,
+        'T': 0,
+        'N': 0,
+    }
+    return local_conditions
+
+
 
 if __name__ == '__main__':
     
@@ -195,25 +260,34 @@ if __name__ == '__main__':
     observed_data = {
         'species': ["SIO", "SO"], # Species of interest
         'transitions': ["7--6", "8_7--7_6"], # Transitions of interest
-        'transition_freqs': [303.92696000, 304.07791400], # Transition frequencies according to Splatalogue
-        'source_flux_Jy': [14.3/1e3, 18.5/1e3], # Flux of species in Jy
-        'source_flux_error_Jy': [2.9/1e3, 3.6/1e3] # Error for each flux in mJy
+        'transition_freqs': [303.92696000, 304.07791400], # Transition frequencies according to Splatalogue in GHz
+        'linewidths': [11.3, 9.23], # Linewidths for the transitions in km/s
+        'source_flux_Jy': [14.3/1e3, 18.5/1e3], # Flux of species in Jy (original in mJy)
+        'source_flux_error_Jy': [2.9/1e3, 3.6/1e3] # Error for each flux in Jy (original in mJy)
+    }
+    
+    # Define molecular data
+    sio_data = {
+        'T': [10, 1000],
+        'g_u': 15.0,
+        'A_ul': 10**(-2.83461),
+        'E_u': 58.34783,
+        'Z': [9.94, 1163.0700] # Partition function is from Exomol (http://exomol.com/db/SiO/28Si-16O/EBJT/28Si-16O__EBJT.pf)
+    }
+
+    so_data = {
+        'T': [10., 1000.],
+        'g_u': 17.0,
+        'A_ul': 10**(-1.94660),
+        'E_u': 62.14451,
+        'Z': [15.904, 1977.1] # Scaled to upper temp with lower limit from Splatalogue (https://www.cv.nrao.edu/php/splat/species_metadata_displayer.php?species_id=20)
     }
 
     '''
-    species = ["SIO", "SO"] # Species of interest
-    transitions = ["7--6", "8_7--7_6"] # Transitions of interest
-    transition_freqs = [303.92696000, 298.25789470] # Transition frequencies according to Splatalogue
-    source_flux_mJy = [14.3, 18.5] # Flux of species in mJy
-    source_flux_error_mJy = [2.9, 3.6] # Error for each flux in mJy
-    source_flux_Jy = [flux/1e-3 for flux in source_flux_mJy] 
-    source_flux_error_Jy = [flux_error/1e-3 for flux_error in source_flux_error_mJy]
-    '''
-
-        source_flux_error_K.append((source_flux_error_mJy[specIndx]*u.mJy/source_beam_area).to(
-                u.K, equivalencies = equiv).value)
-    '''
-    
+    # Determine the estimated column densities based on the temperature (and a number of 
+    # other assumptions)
+    physical_conditions = column_density_constraints(observed_data, sio_data, so_data)
+    '''    
     continueFlag = False
     nWalkers = 8
     nDim = 4 # Number of dimensions within the parameters
@@ -221,18 +295,18 @@ if __name__ == '__main__':
     
     prediction_file = open("{0}/radex-output/predictions.csv".format(DIREC),"w")
     
-    pool = Pool(cpu=4)
+    # pool = Pool()
     
     sampler = mc.EnsembleSampler(
         nWalkers, nDim, ln_likelihood, 
         args=[
-            [observed_data['source_flux_Jy']], 
-            [observed_data['source_flux_error_Jy']], 
+            observed_data['source_flux_Jy'], 
+            observed_data['source_flux_error_Jy'], 
             observed_data['species'], 
             observed_data['transitions'], 
-            observed_data['transition_freqs']
-        ], 
-        pool=pool)
+            observed_data['transition_freqs'],
+            observed_data['linewidths']
+        ])
     
     pos = []
     f = []
@@ -296,17 +370,14 @@ if __name__ == '__main__':
     param2 = "log(n$_{H}$) / cm$^{-3}$"
     param3 = "log(N$_{SiO}$) / cm$^{-2}$"
     param4 = "log(N$_{SO}$) / cm$^{-2}$"
-    # param1 = "T"
-    # param2 = "n"
-    # param3 = "SiO"
-    # param4 = "SO"
 
     #Chain consumer plots posterior distributions and calculates
     #maximum likelihood statistics as well as Geweke test
-    file_out = "{0}/radex-plots/corner.pdf".format(DIREC)
+    file_out = "{0}/radex-plots/corner.jpeg".format(DIREC)
     c = ChainConsumer() 
     c.add_chain(chain, parameters=[param1,param2,param3,param4], walkers=n_walkers)
     c.configure(color_params="posterior", cloud=True, usetex=True, summary=False) 
     fig = c.plotter.plot(filename=file_out, display=False)
     # fig.set_size_inches(6 + fig.get_size_inches())
     # summary = c.analysis.get_summary()
+    
