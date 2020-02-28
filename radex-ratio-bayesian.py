@@ -1,6 +1,7 @@
 import glob
 from multiprocessing import Pool
-import os
+import glob, os
+import sys
 import subprocess as sp
 
 from astropy import units as u
@@ -20,7 +21,8 @@ RADEX_PATH = "/Users/tjames/Documents/Codes/Radex"
 
 
 
-def get_trial_data(params, species, transitions, transition_freqs, linewidths):
+def get_trial_data(params, observed_data):
+    
     # Declare dictionary to hold trial data
     trial_data = {
         'species': [],
@@ -30,18 +32,18 @@ def get_trial_data(params, species, transitions, transition_freqs, linewidths):
     # Unpack the parameters
     T, n, N_sio, N_so = params[0], params[1], params[2], params[3]
     
-    for spec_indx, spec in enumerate(species):
-        
+    for spec_indx, spec in enumerate(observed_data["species"]):    
         # Store the species
         trial_data['species'].append(spec)
 
         # Set the line width and column density
         if spec == "SIO":
             N = N_sio
-            dv = linewidths[0]
         elif spec == "SO":
             N = N_so
-            dv = linewidths[1]
+
+        dv = observed_data["linewidths"][spec_indx]
+        transition = observed_data["transitions"][spec_indx]
 
         # Write the radex input file
         write_radex_input(spec, n, T, n, N, dv, f_min=300, f_max=360)
@@ -51,18 +53,18 @@ def get_trial_data(params, species, transitions, transition_freqs, linewidths):
             DIREC, spec, int(n), int(T), N), shell=True) # &> pipes stdout and stderr
 
         # Read the radex input
-        temp, dens, transitions, E_up, wav, flux = read_radex_output(spec, n, T, N)
-
+        radex_output = read_radex_output(spec, transition, n, T, N)
+        
         # Determine the transition wavelength (in m) from supplied frequency 
         # (this is more accurate than the Radex determined transition frequency)
-        transition_wav = 3e8/(transition_freqs[spec_indx]*1e9)
+        transition_wav = 3e8/(observed_data["transition_freqs"][spec_indx]*1e9)
 
         # Convert the linewidth to frequency space
         linewidth_f = (dv*1e3)/(transition_wav) # dv in km/s so convert to m/s
         # print("linewidth_f=", linewidth_f)
         
         # Determine the flux density
-        trial_data['flux_dens'].append(flux[spec_indx]/linewidth_f) # Converts the fluxes to flux density in ergs/cm2/s/Hz
+        trial_data['flux_dens'].append(radex_output["flux"]/linewidth_f) # Converts the fluxes to flux density in ergs/cm2/s/Hz
 
     return trial_data
 
@@ -93,37 +95,55 @@ def write_radex_input(spec, ns, tkin, nh2, N, dv, f_min, f_max, vs=None, t=None)
     infile.write('{0}\n'.format(dv)) # Line width
     infile.write('0 \n') # Indicates Radex should exit
 
+    infile.close()
 
-def read_radex_output(spec, n, T, N):
-    transition, fluxes, wav, E_up = [], [], [], []
+
+def read_radex_output(spec, transition, n, T, N):
+
+    radex_output = {
+        "temp": 0, 
+        "dens": 0, 
+        "E_up": 0, 
+        "wav": 0, 
+        "flux": 0
+    }
+
     outfile = open('{0}/radex-output/{1}/n{2:1.0E}T{3}N{4:2.1E}.out'.format(
                     DIREC, spec, int(n), int(T), N), 'r')
     lines = outfile.readlines()
-    for line in lines:
+
+    # Loop through the simulation information in the header of the 
+    # output file
+    for line in lines[:8]:
         words = line.split()
         # Extract kinetic temperature
         if (words[1] == "T(kin)"): 
-            temp = float(words[-1])
+            radex_output["temp"] = float(words[-1])
         # Extract density
         if (words[1] == "Density"):
-            dens = float(words[-1])
+            radex_output["dens"] = float(words[-1])
+    
+    for line in lines[11:]:
+        words = line.split()
         # Extract the RADEX data (easiest is to recognise when -- is used to 
         # define the line transition)
-        if (words[1] == "--"):  
-            transition.append(str(words[0])+str(words[1])+str(words[2])) # Extract the transition
-            E_up.append(float(words[3])) # Extract the energy of the transition
-            wav.append(float(words[4])) # Extract the wavelength of the transition
-            fluxes.append(float(words[-1])) # Extract the integrated flux of the transition in cgs
+        if (transition == str(words[0]+words[1]+words[2])):  
+            radex_output["E_up"] = float(words[3]) # Extract the energy of the transition
+            radex_output["wav"] = float(words[5]) # Extract the wavelength of the transition
+            radex_output["flux"] = float(words[-1]) # Extract the integrated flux of the transition in cgs
     
-    # Delete the input file (no longer required)
-    os.remove("{0}/radex-input/{1}/n{2:1.0E}T{3}N{4:2.1E}.inp".format(
-        DIREC, spec, int(n), int(T), N))
+    # Close the file
+    outfile.close()
 
-    # Delete the output file (no longer required)
-    os.remove("{0}/radex-output/{1}/n{2:1.0E}T{3}N{4:2.1E}.out".format(
-        DIREC, spec, int(n), int(T), N))
+    # # Delete the input file (no longer required)
+    # os.remove("{0}/radex-input/{1}/n{2:1.0E}T{3}N{4:2.1E}.inp".format(
+    #     DIREC, spec, int(n), int(T), N))
 
-    return temp, dens, transition, E_up, wav, fluxes
+    # # Delete the output file (no longer required)
+    # os.remove("{0}/radex-output/{1}/n{2:1.0E}T{3}N{4:2.1E}.out".format(
+    #     DIREC, spec, int(n), int(T), N))
+
+    return radex_output
 
 
 # prior probability function 
@@ -135,17 +155,17 @@ def ln_prior(x):
     elif x[1]<2. or x[1]>6.:
         return False
     #N_sio (log space)
-    elif x[2]<11. or x[2]>19.:
+    elif x[2]<12. or x[2]>19.:
         return False
     #N_so (log space)
-    elif x[3]<11. or x[3]>19.:
+    elif x[3]<11. or x[3]>18.:
         return False
     else:
         return True
 
 
 #likelihood function
-def ln_likelihood(x, observed_data, observed_data_error, species, transitions, transition_freqs, linewidths):
+def ln_likelihood(x, observed_data):
 
     # Declare a dictionary to hold data
     theoretical_data = {}
@@ -162,13 +182,13 @@ def ln_likelihood(x, observed_data, observed_data_error, species, transitions, t
     if ln_prior(x):
 
         #call radex to determine flux of given transitions
-        trial_data = get_trial_data(y, species, transitions, transition_freqs, linewidths)
+        trial_data = get_trial_data(y, observed_data)
     
         theoretical_data['spec'] = trial_data['species']
         theoretical_data['flux_dens'] = [(data/1e-23) for data in trial_data['flux_dens']] # Converts from ergs/cm2/s/Hz to Jy
 
         # Determine chi-squared statistic and write it to file
-        chi = chi_squared(theoretical_data['flux_dens'], observed_data,  observed_data_error)
+        chi = chi_squared(theoretical_data['flux_dens'], observed_data['source_flux_Jy'],  observed_data['source_flux_error_Jy'])
         prediction_file.write("{0} \t {1} \t {2} \t {3} \t {4} \t {5} \t {6} \n".format(theoretical_data['flux_dens'][0], theoretical_data['flux_dens'][1], chi, x[0], x[1], x[2], x[3]))
 
         return -0.5*chi
@@ -187,6 +207,8 @@ def chi_squared(observed, expected, error):
 def boltzmann_column_density(nu, int_intensity, A_ul, g_u, Z, E_u, T):
     '''
     Inputs:
+        nu: frequency of the transition
+        int_intensity: intensity of the line (in K km/s)
         g_u: (2J+1)
         Z: Partition function
         E_u: Upper state energy (in K)
@@ -196,25 +218,33 @@ def boltzmann_column_density(nu, int_intensity, A_ul, g_u, Z, E_u, T):
     '''
 
     k = 1.38064852e-23 # m2 kg s-2 K-1
-    h = 6.62607015e-34 #J s
+    h = 6.62607015e-34 #m2 kg s-1
 
     # Upper state column density
-    N_u = (8*np.pi*k*(nu**3)*int_intensity)/(h*((3e8)**3)*A_ul)
+    N_u = ((8*np.pi*k*(nu**2)*int_intensity)/(h*((3e6)**3)*A_ul))
+    print(N_u)
+    return (N_u*Z)/(g_u*np.exp(-E_u/T))
 
-    return N_u*(g_u/Z)*np.exp((E_u)/(T))
 
-
-def column_density_constraints(observed_data, sio_data, so_data):
+def param_constraints(observed_data, sio_data, so_data):
 
     local_conditions = reset_dict()
     physical_conditions = []
 
     for indx, spec in enumerate(observed_data['species']):
-        print(spec)
+        # Determine the FWHM (see https://www.cosmos.esa.int/documents/12133/1035800/fts-line-flux-conv.pdf/)
+        theta = np.sqrt((4*np.log(2)*observed_data['beam_size'][indx])/(np.pi))
+
+        # Determine the flux conversion factor
+        Q = 1.22e6 * ((theta)**-2)*(((observed_data['linewidths'][indx])**-2))
+
+        # Convert flux from Jy km/s to to K km/s
+        int_intensity = Q*(observed_data['source_flux_Jy'][indx])*(observed_data['linewidths'][indx])
+
         # Convert the linewidth in km/s to frequency space
         linewidth_wav = 3e8/(observed_data['transition_freqs'][indx]*(1e9))
         nu = (observed_data['linewidths'][indx]*1e3)/(linewidth_wav) # dv in km/s so convert to m/s
-        int_intensity = 1.0645*observed_data['source_flux_Jy'][indx]*(nu)
+        # int_intensity = 1.0645*observed_data['source_flux_Jy']*(nu)
 
         if spec == "SIO":
             data = sio_data
@@ -225,16 +255,17 @@ def column_density_constraints(observed_data, sio_data, so_data):
         g_u = data['g_u']
         E_u = data['E_u']
         
-        for indT, temp in enumerate(sio_data['T']):
-            Z = data['Z'][indT]
-            T = data['T'][indT]
+        for indx, temp in enumerate(sio_data['T']):
+            Z = data['Z'][indx]
+            T = data['T'][indx]
 
             N = boltzmann_column_density(nu, int_intensity, A_ul, g_u, Z, E_u, T)
+            
             local_conditions['species'] = spec
             local_conditions['intensity'] = int_intensity
-            local_conditions['T'] = T
             local_conditions['N'] = N
-    
+            local_conditions['T'] = T
+
             physical_conditions.append(local_conditions)
             
             # Reset the dictionary
@@ -253,6 +284,13 @@ def reset_dict():
     return local_conditions
 
 
+def delete_radex_io(species):
+    for spec in observed_data['species']:
+        filelist = glob.glob(os.path.join("{0}/radex-output/{1}/".format(DIREC, spec), "*.out"))
+        for file_instance in filelist:
+            os.remove(file_instance)
+
+
 
 if __name__ == '__main__':
     
@@ -263,50 +301,40 @@ if __name__ == '__main__':
         'transition_freqs': [303.92696000, 304.07791400], # Transition frequencies according to Splatalogue in GHz
         'linewidths': [11.3, 9.23], # Linewidths for the transitions in km/s
         'source_flux_Jy': [14.3/1e3, 18.5/1e3], # Flux of species in Jy (original in mJy)
-        'source_flux_error_Jy': [2.9/1e3, 3.6/1e3] # Error for each flux in Jy (original in mJy)
+        'source_flux_error_Jy': [2.9/1e3, 3.6/1e3], # Error for each flux in Jy (original in mJy)
+        'beam_size': [(14/14.3)*1.3, (17.5/18.5)*1.3] # Approximated beam size by dividing mJy/beam by mJy and multiplying by sample (number of beams in source)
     }
     
     # Define molecular data
     sio_data = {
-        'T': [10, 1000],
+        'T': [75, 150., 1000],
         'g_u': 15.0,
         'A_ul': 10**(-2.83461),
         'E_u': 58.34783,
-        'Z': [9.94, 1163.0700] # Partition function is from Exomol (http://exomol.com/db/SiO/28Si-16O/EBJT/28Si-16O__EBJT.pf)
+        'Z': [72.327, 144.344, 962.5698]
     }
 
     so_data = {
-        'T': [10., 1000.],
+        'T': [75., 150., 1000.],
         'g_u': 17.0,
         'A_ul': 10**(-1.94660),
         'E_u': 62.14451,
-        'Z': [15.904, 1977.1] # Scaled to upper temp with lower limit from Splatalogue (https://www.cv.nrao.edu/php/splat/species_metadata_displayer.php?species_id=20)
+        'Z': [197.515, 414.501, 1163.0700] # Scaled to upper temp with lower limit from Splatalogue (https://www.cv.nrao.edu/php/splat/species_metadata_displayer.php?species_id=20)
     }
 
-    '''
+    
     # Determine the estimated column densities based on the temperature (and a number of 
     # other assumptions)
-    physical_conditions = column_density_constraints(observed_data, sio_data, so_data)
+    physical_conditions = param_constraints(observed_data, sio_data, so_data)
     '''    
     continueFlag = False
     nWalkers = 8
     nDim = 4 # Number of dimensions within the parameters
-    nSteps = int(1e2)
+    nSteps = int(1e3) 
     
     prediction_file = open("{0}/radex-output/predictions.csv".format(DIREC),"w")
     
-    # pool = Pool()
-    
-    sampler = mc.EnsembleSampler(
-        nWalkers, nDim, ln_likelihood, 
-        args=[
-            observed_data['source_flux_Jy'], 
-            observed_data['source_flux_error_Jy'], 
-            observed_data['species'], 
-            observed_data['transitions'], 
-            observed_data['transition_freqs'],
-            observed_data['linewidths']
-        ])
+    sampler = mc.EnsembleSampler(nWalkers, nDim, ln_likelihood, args=[observed_data], pool=Pool())
     
     pos = []
     f = []
@@ -315,10 +343,10 @@ if __name__ == '__main__':
         os.makedirs('{0}/chains/'.format(DIREC))
     if not continueFlag:
         for i in range(nWalkers):
-            dens = ((random.random()*5.0)+2.0)
-            N_sio = ((random.random()*7.0)+11.0)
-            N_so = ((random.random()*7.0)+11.0)
-            T = 10+(random.random()*990.0)
+            dens = random.uniform(2, 8)
+            N_sio = random.uniform(9, 19)
+            N_so = random.uniform(9, 19)
+            T = random.uniform(10, 1000)
             pos.append([T, dens, N_sio, N_so])
             f.append(open("{0}/chains/mcmc_chain{1}.csv".format(DIREC,i+1),"w"))
     else:
@@ -332,7 +360,18 @@ if __name__ == '__main__':
     nBreak=int(nSteps/10)
     for counter in range(0,10):
         sampler.reset() #lose the written chain
-        pos, prob, state = sampler.run_mcmc(pos, nBreak, progress=True) #start from where we left off previously 
+        try: 
+            pos, prob, state = sampler.run_mcmc(pos, nBreak, progress=True) #start from where we left off previously 
+        except ValueError:
+            pos.pop() # Removes errorneous combination
+            # Reselect values
+            dens = random.uniform(2, 8)
+            N_sio = random.uniform(9, 19)
+            N_so = random.uniform(9, 19)
+            T = random.uniform(10, 1000)
+            pos.append([T, dens, N_sio, N_so])
+            pos, prob, state = sampler.run_mcmc(pos, nBreak, progress=True) #start from where we left off previously 
+        delete_radex_io(observed_data["species"])
         chain = np.array(sampler.chain[:,:,:]) #get chain for writing
         chain = chain.astype(float)
         #chain is organized as chain[walker,step,parameter]
@@ -380,4 +419,4 @@ if __name__ == '__main__':
     fig = c.plotter.plot(filename=file_out, display=False)
     # fig.set_size_inches(6 + fig.get_size_inches())
     # summary = c.analysis.get_summary()
-    
+    '''
