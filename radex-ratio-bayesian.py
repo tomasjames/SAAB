@@ -22,13 +22,10 @@ DIREC = os.getcwd()
 # RADEX_PATH = "{0}/../Radex".format(DIREC)
 RADEX_PATH = "/Users/tjames/Documents/Codes/Radex"
 
-# Connecting to the database using 'connect()' method
-config_file = config_file(filename='database.ini', section='postgresql')
-db = connect(config=config_file)
 
 
 if __name__ == '__main__':
-    
+
     # Define Farhad's data (temporary - need to compute from saved file)
     observed_data = {
         'species': ["SIO", "SO"], # Species of interest
@@ -56,11 +53,32 @@ if __name__ == '__main__':
         'Z': [197.515, 414.501, 1163.0700] # Scaled to upper temp with lower limit from Splatalogue (https://www.cv.nrao.edu/php/splat/species_metadata_displayer.php?species_id=20)
     }
 
+    # Connecting to the database using 'connect()' method
+    config = config_file(db_init_filename='database.ini', section='postgresql')
+    # db = connect(config=config_file)
+
+    # Define the commands necessary to create table in database
+    commands = (
+        """
+        CREATE TABLE chain_storage (
+            id SERIAL PRIMARY KEY,
+            walker REAL NOT NULL,
+            chain REAL NOT NULL,
+            N_SIO REAL NOT NULL,
+            N_SO REAL NOT NULL
+        )
+        """,
+    )
+
+    # Create the table
+    create_table(config_file, commands)
+
     '''
     # Determine the estimated column densities based on the temperature (and a number of 
     # other assumptions)
     physical_conditions = param_constraints(observed_data, sio_data, so_data)
     '''   
+
     continueFlag = False
     nWalkers = 8
     nDim = 4 # Number of dimensions within the parameters
