@@ -1,9 +1,19 @@
+#!/usr/bin/python
+import glob
+import numpy as np
+import os
+import subprocess as sp
+
+DIREC = os.getcwd()
+RADEX_PATH = "/Users/tjames/Documents/Codes/Radex"
+
+
 def get_trial_data(params, observed_data):
     
     # Declare dictionary to hold trial data
     trial_data = {
         'species': [],
-        'flux_dens': []
+        'flux': []
     }
 
     # Unpack the parameters
@@ -23,25 +33,17 @@ def get_trial_data(params, observed_data):
         transition = observed_data["transitions"][spec_indx]
 
         # Write the radex input file
-        write_radex_input(spec, n, T, n, N, dv, f_min=300, f_max=360)
+        write_radex_input(spec, n, T, n, N, dv, f_min=290, f_max=360)
 
         #Run radex
         sp.run('radex < {0}/radex-input/{1}/n{2:1.0E}T{3}N{4:2.1E}.inp &> /dev/null'.format(
             DIREC, spec, int(n), int(T), N), shell=True) # &> pipes stdout and stderr
 
-        # Read the radex input
+        # Read the radex output
         radex_output = read_radex_output(spec, transition, n, T, N)
-        
-        # Determine the transition wavelength (in m) from supplied frequency 
-        # (this is more accurate than the Radex determined transition frequency)
-        transition_wav = 3e8/(observed_data["transition_freqs"][spec_indx]*1e9)
 
-        # Convert the linewidth to frequency space
-        linewidth_f = (dv*1e3)/(transition_wav) # dv in km/s so convert to m/s
-        # print("linewidth_f=", linewidth_f)
-        
         # Determine the flux density
-        trial_data['flux_dens'].append(radex_output["flux"]/linewidth_f) # Converts the fluxes to flux density in ergs/cm2/s/Hz
+        trial_data['flux'].append(radex_output["flux"])
 
     return trial_data
 
@@ -119,16 +121,16 @@ def read_radex_output(spec, transition, n, T, N):
 # prior probability function 
 def ln_prior(x):
     #temp
-    if x[0]<50. or x[0]>500.:
+    if x[0]<75 or x[0]>500:
         return False
     #dens (log space)
-    elif x[1]<2. or x[1]>6.:
+    elif x[1]<2 or x[1]>6:
         return False
     #N_sio (log space)
-    elif x[2]<11. or x[2]>15.:
+    elif x[2]<9 or x[2]>15:
         return False
     #N_so (log space)
-    elif x[3]<10. or x[3]>14.:
+    elif x[3]<9 or x[3]>15:
         return False
     else:
         return True
@@ -141,7 +143,7 @@ def ln_likelihood(x, observed_data):
     theoretical_data = {}
     # Define the dictionary elements
     theoretical_data['spec'] = []
-    theoretical_data['flux_dens'] = []
+    theoretical_data['flux'] = []
 
     # Pack the parameters in to the y array for emcee
     # 0 is T, 1 is n and 2 is N_sio and 3 in N_so
@@ -155,11 +157,10 @@ def ln_likelihood(x, observed_data):
         trial_data = get_trial_data(y, observed_data)
     
         theoretical_data['spec'] = trial_data['species']
-        theoretical_data['flux_dens'] = [(data/1e-23) for data in trial_data['flux_dens']] # Converts from ergs/cm2/s/Hz to Jy
-
+        theoretical_data['flux'] = trial_data['flux']
+    
         # Determine chi-squared statistic and write it to file
-        chi = chi_squared(theoretical_data['flux_dens'], observed_data['source_flux_Jy'],  observed_data['source_flux_error_Jy'])
-        prediction_file.write("{0} \t {1} \t {2} \t {3} \t {4} \t {5} \t {6} \n".format(theoretical_data['flux_dens'][0], theoretical_data['flux_dens'][1], chi, x[0], x[1], x[2], x[3]))
+        chi = chi_squared(theoretical_data['flux'], observed_data['source_flux'],  observed_data['source_flux_error'])
 
         return -0.5*chi
     
@@ -172,6 +173,17 @@ def chi_squared(observed, expected, error):
     for indx, val in enumerate(observed):
         sum += ((observed[indx] - expected[indx])**2)/(error[indx]**2)
     return sum
+
+
+def linewidth_conversion(dv, transition_freq):
+    
+    # Determine the transition wavelength (in m) from supplied frequency 
+    transition_wav = 3e8/(transition_freq)
+
+    # Convert the linewidth to frequency space
+    linewidth_f = (dv)/(transition_wav) 
+
+    return linewidth_f
 
 
 def boltzmann_column_density(nu, int_intensity, A_ul, g_u, Z, E_u, T):
@@ -192,7 +204,6 @@ def boltzmann_column_density(nu, int_intensity, A_ul, g_u, Z, E_u, T):
 
     # Upper state column density
     N_u = ((8*np.pi*k*(nu**2)*int_intensity*(1e5))/(h*((3e10)**3)*A_ul))
-    print(N_u)
     return (N_u*Z)/(g_u*np.exp(-E_u/T))
 
 
@@ -204,18 +215,16 @@ def param_constraints(observed_data, sio_data, so_data):
     for indx, spec in enumerate(observed_data['species']):
         # Determine the FWHM (see https://www.cosmos.esa.int/documents/12133/1035800/fts-line-flux-conv.pdf/ or https://www.iram.fr/IRAMFR/ARC/documents/cycle7/ALMA_Cycle7_Technical_Handbook.pdf Page 132)
         resolution = 0.0013 # effective resolution of ALMA band 7 (see https://home.strw.leidenuniv.nl/~alma/memo/allegro_memo3.pdf)
-        # theta = np.sqrt((4*np.log(2)*resolution)/(np.pi))
 
         # Determine the flux conversion factor (again, from https://www.cosmos.esa.int/documents/12133/1035800/fts-line-flux-conv.pdf/)
         Q = 1.22e6 * ((resolution)**-2)*(((observed_data['linewidths'][indx])**-2))
 
         # Convert flux from Jy km/s to to K km/s
-        int_intensity = Q*(observed_data['source_flux_Jy'][indx])*(observed_data['linewidths'][indx])
+        int_intensity = Q*(observed_data['source_flux_dens_Jy'][indx])*(observed_data['linewidths'][indx])
 
         # Convert the linewidth in km/s to frequency space
         linewidth_wav = 3e8/(observed_data['transition_freqs'][indx]*(1e9))
         nu = (observed_data['linewidths'][indx]*1e3)/(linewidth_wav) # dv in km/s so convert to m/s
-        # int_intensity = 1.0645*observed_data['source_flux_Jy']*(nu)
 
         if spec == "SIO":
             data = sio_data
@@ -256,7 +265,7 @@ def reset_dict():
 
 
 def delete_radex_io(species):
-    for spec in observed_data['species']:
+    for spec in species:
         filelist = glob.glob(os.path.join("{0}/radex-output/{1}/".format(DIREC, spec), "*.out"))
         for file_instance in filelist:
             os.remove(file_instance)
