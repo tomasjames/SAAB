@@ -4,11 +4,9 @@ import numpy as np
 import os
 import subprocess as sp
 
-DIREC = os.getcwd()
-RADEX_PATH = "/Users/tjames/Documents/Codes/Radex"
 
 
-def get_trial_data(params, observed_data):
+def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
     
     # Declare dictionary to hold trial data
     trial_data = {
@@ -31,16 +29,16 @@ def get_trial_data(params, observed_data):
 
         dv = observed_data["linewidths"][spec_indx]
         transition = observed_data["transitions"][spec_indx]
-
+        
         # Write the radex input file
-        write_radex_input(spec, n, T, n, N, dv, f_min=290, f_max=360)
+        write_radex_input(spec, n, T, n, N, dv, DIREC, RADEX_PATH, f_min=290, f_max=360)
 
         #Run radex
-        sp.run('radex < {0}/radex-input/{1}/n{2:1.0E}T{3}N{4:2.1E}.inp &> /dev/null'.format(
-            DIREC, spec, int(n), int(T), N), shell=True) # &> pipes stdout and stderr
-
+        os.system('radex < {0}/radex-input/{1}/n{2:1.0E}T{3}N{4:2.1E}.inp &> /dev/null'.format(
+            DIREC, spec, int(n), int(T), N)) # &> pipes stdout and stderr
+        
         # Read the radex output
-        radex_output = read_radex_output(spec, transition, n, T, N)
+        radex_output = read_radex_output(spec, transition, n, T, N, DIREC)
 
         # Determine the flux density
         trial_data['flux'].append(radex_output["flux"])
@@ -49,7 +47,7 @@ def get_trial_data(params, observed_data):
 
 
 # Function to write the input to run Radex
-def write_radex_input(spec, ns, tkin, nh2, N, dv, f_min, f_max, vs=None, t=None):
+def write_radex_input(spec, ns, tkin, nh2, N, dv, DIREC, RADEX_PATH, f_min, f_max, vs=None, t=None):
     tbg=2.73
     # Open the text file that constitutes Radex's input file
     if vs==None and t==None:
@@ -63,7 +61,7 @@ def write_radex_input(spec, ns, tkin, nh2, N, dv, f_min, f_max, vs=None, t=None)
         infile.write('{0}/radex-output/{1}/n{2:1.0E}T{3}N{4:2.1E}.out\n'.format(
             DIREC, spec, int(ns), int(tkin), N))  # Output file    
     else:
-        infile.write('{0}/radex-output/{1}/v{2}n{3:1.0E}/t{4}.out\n'.format(DIREC,spec,int(vs),int(ns),int(t)))  # Output file
+        infile.write('{0}/radex-output/{1}/v{2}n{3:1.4E}/t{4}.out\n'.format(DIREC,spec,int(vs),int(ns),int(t)))  # Output file
     infile.write('{0} {1}\n'.format(f_min,f_max)) # Frequency range (0 0 is unlimited)
     infile.write('{0}\n'.format(tkin)) # Kinetic temperature (i.e. temp of gas)
     infile.write('1\n') # Number of collisional partners
@@ -71,13 +69,13 @@ def write_radex_input(spec, ns, tkin, nh2, N, dv, f_min, f_max, vs=None, t=None)
     infile.write('{0}\n'.format(nh2)) # Density of collision partner (i.e. dens of gas)
     infile.write('{0}\n'.format(tbg)) # Background temperature
     infile.write('{0}\n'.format(N)) # Column density of emitting species
-    infile.write('{0}\n'.format(dv)) # Line width
+    infile.write('{0}\n'.format(dv/1e3)) # Line width
     infile.write('0 \n') # Indicates Radex should exit
 
     infile.close()
 
 
-def read_radex_output(spec, transition, n, T, N):
+def read_radex_output(spec, transition, n, T, N, DIREC):
 
     radex_output = {
         "temp": 0, 
@@ -124,20 +122,20 @@ def ln_prior(x):
     if x[0]<75 or x[0]>500:
         return False
     #dens (log space)
-    elif x[1]<2 or x[1]>6:
+    elif x[1]<3 or x[1]>6:
         return False
     #N_sio (log space)
-    elif x[2]<9 or x[2]>15:
+    elif x[2]<11 or x[2]>14:
         return False
     #N_so (log space)
-    elif x[3]<9 or x[3]>15:
+    elif x[3]<10 or x[3]>13:
         return False
     else:
         return True
 
 
 #likelihood function
-def ln_likelihood(x, observed_data):
+def ln_likelihood(x, observed_data, DIREC, RADEX_PATH):
 
     # Declare a dictionary to hold data
     theoretical_data = {}
@@ -154,7 +152,7 @@ def ln_likelihood(x, observed_data):
     if ln_prior(x):
 
         #call radex to determine flux of given transitions
-        trial_data = get_trial_data(y, observed_data)
+        trial_data = get_trial_data(y, observed_data, DIREC, RADEX_PATH)
     
         theoretical_data['spec'] = trial_data['species']
         theoretical_data['flux'] = trial_data['flux']
@@ -264,7 +262,23 @@ def reset_dict():
     return local_conditions
 
 
-def delete_radex_io(species):
+def reset_data_dict():
+    data = {
+        'source': "", # The source name
+        'sample_size': 0, # The sample size in beams
+        'species': [], # Species of interest
+        'transitions': [], # Transitions of interest
+        'transition_freqs': [], # Transition frequencies according to Splatalogue in GHz
+        'linewidths': [], # Linewidths for the transitions in km/s
+        'source_flux_dens_Jy': [], # Flux of species in Jy (original in mJy)
+        'source_flux_dens_error_Jy': [], # Error for each flux in Jy (original in mJy)
+        'source_flux': [],
+        'source_flux_error': []
+    }
+    return data
+
+
+def delete_radex_io(species, DIREC):
     for spec in species:
         filelist = glob.glob(os.path.join("{0}/radex-output/{1}/".format(DIREC, spec), "*.out"))
         for file_instance in filelist:
