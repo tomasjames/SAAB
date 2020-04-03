@@ -4,24 +4,30 @@ import numpy as np
 import os
 import subprocess as sp
 
+import workerfunctions
 
 
-def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
+
+def get_trial_data(params, observed_data, DIREC, RADEX_PATH, chem_model=True):
     
     # Declare dictionary to hold trial data
     trial_data = {
         'species': [],
-        'flux': []
+        'flux': [],
+        'N': []
     }
 
     # Unpack the parameters
-    T, n, N_sio, N_so = params[0], params[1], params[2], params[3]
+    if chem_model:
+        vs, initial_dens, N_sio, N_so = params[0], params[1], np.nan, np.nan # N_sio and N_so are set to nan for continuity
+    else:
+        temp, initial_dens, N_sio, N_so = params[0], params[1], params[2], params[3]
     
     for spec_indx, spec in enumerate(observed_data["species"]):    
         # Store the species
         trial_data['species'].append(spec)
 
-        # Set the line width and column density
+        # Set the column density
         if spec == "SIO":
             N = N_sio
         elif spec == "SO":
@@ -30,18 +36,57 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
         dv = observed_data["linewidths"][spec_indx]
         transition = observed_data["transitions"][spec_indx]
         
-        # Write the radex input file
-        write_radex_input(spec, n, T, n, N, dv, DIREC, RADEX_PATH, f_min=290, f_max=360)
+        # Run UCLCHEM and retrieve appropriate quantities for RADEX
+        if chem_model:
+            shock_model = workerfunctions.run_uclchem(
+                vs, initial_dens, DIREC, shock_read=True)
 
-        #Run radex
+            # Determine the dissipation length and identify 
+            # the point that it begins (max_temp_indx)
+            dlength = 12.0*3.08e18*vs/initial_dens
+            dlength_index = shock_model["distance"].index(
+                min(shock_model["distance"], key=lambda x: abs(x-dlength)))
+
+            # Need to find the maximum in temp
+            max_temp_indx = shock_model["temp"].index(
+                np.max(shock_model["temp"]))
+
+            # Average the quantities across the dissipation region
+            resolved_T = workerfunctions.resolved_quantity(
+                shock_model["dens"][max_temp_indx:dlength_index], 
+                shock_model["temp"][max_temp_indx:dlength_index], 
+                shock_model["distance"][max_temp_indx:dlength_index]
+            )
+            resolved_n = workerfunctions.resolved_quantity(
+                shock_model["dens"][max_temp_indx:dlength_index],
+                shock_model["dens"][max_temp_indx:dlength_index],
+                shock_model["distance"][max_temp_indx:dlength_index]
+            )
+
+            coldens_H = shock_model["coldens"]
+            abund = shock_model["abundances"][spec_indx]
+            N = [a*b for a, b in zip(coldens_H, abund)]
+
+            resolved_N = workerfunctions.resolved_quantity(
+                shock_model["dens"][max_temp_indx:dlength_index],
+                N[max_temp_indx:dlength_index],
+                shock_model["distance"][max_temp_indx:dlength_index]
+            )
+
+        # Write the radex input file
+        write_radex_input(spec, resolved_n, resolved_T, resolved_n, resolved_N, dv,
+                          DIREC, RADEX_PATH, f_min=290, f_max=360)
+
+        # Run radex
         os.system('radex < {0}/radex-input/{1}/n{2:1.0E}T{3}N{4:2.1E}.inp &> /dev/null'.format(
-            DIREC, spec, int(n), int(T), N)) # &> pipes stdout and stderr
+            DIREC, spec, int(resolved_n), int(resolved_T), resolved_N)) # &> pipes stdout and stderr
         
         # Read the radex output
-        radex_output = read_radex_output(spec, transition, n, T, N, DIREC)
+        radex_output = read_radex_output(spec, transition, resolved_n, resolved_T, resolved_N, DIREC)
 
         # Determine the flux density
         trial_data['flux'].append(radex_output["flux"])
+        trial_data['N'].append(resolved_N)
 
     return trial_data
 
@@ -124,12 +169,12 @@ def ln_prior(x):
     #dens (log space)
     elif x[1]<3 or x[1]>6:
         return False
-    #N_sio (log space)
-    elif x[2]<11 or x[2]>14:
-        return False
-    #N_so (log space)
-    elif x[3]<10 or x[3]>13:
-        return False
+    # #N_sio (log space)
+    # elif x[2]<11 or x[2]>14:
+    #     return False
+    # #N_so (log space)
+    # elif x[3]<10 or x[3]>13:
+    #     return False
     else:
         return True
 
@@ -138,14 +183,15 @@ def ln_prior(x):
 def ln_likelihood(x, observed_data, DIREC, RADEX_PATH):
 
     # Declare a dictionary to hold data
-    theoretical_data = {}
-    # Define the dictionary elements
-    theoretical_data['spec'] = []
-    theoretical_data['flux'] = []
+    theoretical_data = {
+        'spec': [],
+        'N': [],
+        'flux': []
+    }
 
     # Pack the parameters in to the y array for emcee
-    # 0 is T, 1 is n and 2 is N_sio and 3 in N_so
-    y = [x[0], 10**x[1], 10**x[2], 10**x[3]]
+    # 0 is T, 1 is n 
+    y = [x[0], 10**x[1]]
 
     # Checks to see whether the randomly selected values of x are within
     # the desired range using ln_prior
@@ -156,6 +202,7 @@ def ln_likelihood(x, observed_data, DIREC, RADEX_PATH):
     
         theoretical_data['spec'] = trial_data['species']
         theoretical_data['flux'] = trial_data['flux']
+        theoretical_data['N'] = trial_data['N']
     
         # Determine chi-squared statistic and write it to file
         chi = chi_squared(theoretical_data['flux'], observed_data['source_flux'],  observed_data['source_flux_error'])
