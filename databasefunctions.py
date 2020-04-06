@@ -27,7 +27,7 @@ def create_table(db_params, commands):
 	
 def insert_chain_data(db_params, table, chain):
     """ insert multiple vendors into the vendors table  """
-    sql = "INSERT INTO {0}(id, T, dens, N_SIO, N_SO) VALUES (DEFAULT, {1}, {2}, {3}, {4});".format(table, chain[0], chain[1], chain[2], chain[3])
+    sql = "INSERT INTO {0}(id, vs, initial_dens) VALUES (DEFAULT, {1}, {2});".format(table, chain[0], chain[1])
     conn = None
     try:
         # connect to the PostgreSQL database
@@ -54,11 +54,9 @@ def get_chains(db_params, table, column_names):
         conn = psycopg2.connect(**db_params)
         cur = conn.cursor()
         cur.execute(
-            "SELECT {0}, {1}, {2}, {3} FROM {4};".format(
+            "SELECT {0}, {1} FROM {4};".format(
                 column_names[0], 
-                column_names[1], 
-                column_names[2], 
-                column_names[3], 
+                column_names[1],  
                 table
             )
         )

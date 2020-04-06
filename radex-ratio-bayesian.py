@@ -25,12 +25,10 @@ from correlation import autocorr_new
 
 
 def param_select():
-    T = random.uniform(75, 500)
-    dens = random.uniform(3, 6)
-    # N_sio = random.uniform(11, 14)
-    # N_so = random.uniform(10, 13)
+    vs = random.uniform(30, 60)
+    initial_dens = random.uniform(3, 6)
     
-    return T, dens
+    return vs, initial_dens
 
 
 # Define constants
@@ -130,10 +128,8 @@ if __name__ == '__main__':
                 """
                 CREATE TABLE IF NOT EXISTS {0} (
                     id SERIAL PRIMARY KEY,
-                    T REAL NOT NULL,
-                    dens REAL NOT NULL,
-                    N_SIO REAL NOT NULL,
-                    N_SO REAL NOT NULL
+                    vs REAL NOT NULL,
+                    initial_dens REAL NOT NULL
                 )
                 """.format(source_name),
             )
@@ -167,9 +163,10 @@ if __name__ == '__main__':
     # other assumptions)
     physical_conditions = param_constraints(observed_data, sio_data, so_data)
     '''
+
     continueFlag = False
     nWalkers = 4 # Number of random walkers to sample parameter space
-    nDim = 4 # Number of dimensions within the parameters
+    nDim = 2 # Number of dimensions within the parameters
     nSteps = int(1e2) # Number of steps per walker
     
     # Set up the backend for temporary chain storage
@@ -190,8 +187,8 @@ if __name__ == '__main__':
             
             if not continueFlag:
                 for i in range(nWalkers):
-                    T, dens = param_select()
-                    pos.append([T, dens])
+                    vs, initial_dens = param_select()
+                    pos.append([vs, initial_dens])
 
             print(obs["source"])
 
@@ -215,7 +212,7 @@ if __name__ == '__main__':
                         db.insert_chain_data(db_params=config_file, table=obs["source"], chain=store)
 
                 sampler.reset()
-            
+            '''
             # Read the database to retrieve the data
             chains = db.get_chains(
                 db_params=config_file, 
@@ -256,3 +253,4 @@ if __name__ == '__main__':
 
             fig_walks = c.plotter.plot_walks(filename=file_out_walk, display=False, plot_posterior=True)
             
+            '''

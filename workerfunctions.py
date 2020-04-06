@@ -72,6 +72,7 @@ def run_uclchem(vs, n, DIREC, shock_read=True):
                     "abundances": abundances}
 
 
+
 def read_shock_data(filename):
     a = open(filename).read()
     a = a.split('\n')
@@ -103,6 +104,7 @@ def read_shock_data(filename):
     return time, dens, temp, vel, av, N
 
 
+
 def resolved_quantity(density, measure, x):
     
     for indx in range(1, len(density)):
@@ -112,6 +114,7 @@ def resolved_quantity(density, measure, x):
 
         quantity = numerator/denominator
     return quantity
+
 
 
 def time_distance_transform(vel, times):
