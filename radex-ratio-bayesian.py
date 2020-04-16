@@ -27,7 +27,7 @@ from correlation import autocorr_new
 def param_select():
     vs = random.uniform(30, 60)
     initial_dens = random.uniform(3, 6)
-    
+
     return vs, initial_dens
 
 
@@ -79,7 +79,7 @@ if __name__ == '__main__':
     source_indx = 0
 
     # Extract the columns from the data and insert in to data list
-    for indx, entry in enumerate(data[1:][0:8]): # data[0] is the header row
+    for indx, entry in enumerate(data[1:]): # data[0] is the header row
         source_name = entry[0] # The source name
         sample_size = entry[3] # The sample size (in beams)
         species = entry[4][0:entry[4].find(" ")].upper() # The molecule of interest
@@ -167,7 +167,7 @@ if __name__ == '__main__':
     continueFlag = False
     nWalkers = 4 # Number of random walkers to sample parameter space
     nDim = 2 # Number of dimensions within the parameters
-    nSteps = int(1e2) # Number of steps per walker
+    nSteps = int(1e1) # Number of steps per walker
     
     # Set up the backend for temporary chain storage
     # Don't forget to clear it in case the file already exists
@@ -177,10 +177,10 @@ if __name__ == '__main__':
 
     autocorr_list = [[], [], [], []]
 
-    for obs in observed_data:
+    for obs in observed_data[:8]:
         if obs["species"] != ["SIO", "SO"]:
             continue
-        else:    
+        else:
             sampler = mc.EnsembleSampler(nWalkers, nDim, ln_likelihood, 
                 args=(obs, DIREC, RADEX_PATH,), backend=backend, pool=Pool())
             pos = []
@@ -192,17 +192,18 @@ if __name__ == '__main__':
 
             print(obs["source"])
 
-            # Split the chain in to 10 chunks, each 10% of the total size and write out
+            # Split the chain in to 100 chunks, each 1% of the total size and write out
             nBreak=int(nSteps/10)
             for counter in range(0, nBreak):
                 sampler.reset() # Reset the chain
-                pos, prob, state = sampler.run_mcmc(pos, nBreak, progress=True) #start from where we left off previously 
+                print("Running mcmc")
+                pos, prob, state = sampler.run_mcmc(pos, nBreak, progress=False) #start from where we left off previously 
 
                 for data in observed_data:
                     # Delete the Radex input and output files
                     delete_radex_io(data["species"], DIREC)
                 
-                #chain is organized as chain[walker,step,parameter]
+                #chain is organized as chain[walker, step, parameter(s)]
                 chain = np.array(sampler.chain[:, :, :])
                 for i in range(0, nWalkers):
                     for j in range(0, nBreak):
@@ -212,16 +213,23 @@ if __name__ == '__main__':
                         db.insert_chain_data(db_params=config_file, table=obs["source"], chain=store)
 
                 sampler.reset()
-            '''
+            
+            print("Moving to plotting routine")
+            print("Getting data from database")
+
             # Read the database to retrieve the data
+            print(config_file)
+            print(obs["source"])
+            print([
+                "vs",
+                "initial_dens",
+            ])
             chains = db.get_chains(
                 db_params=config_file, 
                 table=obs["source"], 
                 column_names=[
-                    "T",
-                    "dens",
-                    "N_SIO",
-                    "N_SO"
+                    "vs",
+                    "initial_dens"
                 ]
             )
 
@@ -229,28 +237,22 @@ if __name__ == '__main__':
             chain_length = len(chains)
 
             # Throw away the first 20% or so of samples so as to avoid considering initial burn-in period
-            # And concatenate the chain so as chain is contiguous array
             # TODO Add Geweke test to ensure convergence has occured outside of burn-in period
             chain = np.array(chains[int(chain_length*0.2):])
-            # chain = np.concatenate(chains)
 
             #Name params for chainconsumer (i.e. axis labels)
-            param1 = "T / K"
+            param1 = "v$_{s}$ / km s$^{-1}$"
             param2 = "log(n$_{H}$) / cm$^{-3}$"
-            param3 = "log(N$_{SiO}$) / cm$^{-2}$"
-            param4 = "log(N$_{SO}$) / cm$^{-2}$"
 
             #Chain consumer plots posterior distributions and calculates
             #maximum likelihood statistics as well as Geweke test
-            file_out = "{0}/radex-plots/new/corner_{1}.jpeg".format(DIREC, obs["source"])
-            file_out_walk = "{0}/radex-plots/new/walks/walk_{1}.jpeg".format(DIREC, obs["source"])
+            file_out = "{0}/radex-plots/new/corner_{1}.png".format(DIREC, obs["source"])
+            file_out_walk = "{0}/radex-plots/new/walks/walk_{1}.png".format(DIREC, obs["source"])
             c = ChainConsumer() 
-            c.add_chain(chain, parameters=[param1,param2,param3,param4], walkers=nWalkers)
+            c.add_chain(chain, parameters=[param1,param2], walkers=nWalkers)
             c.configure(color_params="posterior", cloud=True, usetex=True, summary=False) 
             fig = c.plotter.plot(filename=file_out, display=False)
             # fig.set_size_inches(6 + fig.get_size_inches())
             # summary = c.analysis.get_summary()
 
             fig_walks = c.plotter.plot_walks(filename=file_out_walk, display=False, plot_posterior=True)
-            
-            '''

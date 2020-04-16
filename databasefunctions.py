@@ -54,7 +54,7 @@ def get_chains(db_params, table, column_names):
         conn = psycopg2.connect(**db_params)
         cur = conn.cursor()
         cur.execute(
-            "SELECT {0}, {1} FROM {4};".format(
+            "SELECT {0}, {1} FROM {2};".format(
                 column_names[0], 
                 column_names[1],  
                 table
@@ -65,6 +65,7 @@ def get_chains(db_params, table, column_names):
         print("The number of entries: ", cur.rowcount)
         cur.close()
     except (Exception, psycopg2.DatabaseError) as error:
+        print("ERROR THROWN")
         print(error)
         rows = None
     finally:

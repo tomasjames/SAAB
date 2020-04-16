@@ -3,6 +3,7 @@ import glob
 import numpy as np
 import os
 import subprocess as sp
+import time
 
 import workerfunctions
 
@@ -10,11 +11,13 @@ import workerfunctions
 
 def get_trial_data(params, observed_data, DIREC, RADEX_PATH, chem_model=True):
     
+    print("Getting trial data")
+
     # Declare dictionary to hold trial data
     trial_data = {
         'species': [],
-        'flux': [],
-        'N': []
+        'N': [],
+        'flux': []
     }
 
     # Unpack the parameters
@@ -38,6 +41,8 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH, chem_model=True):
         
         # Run UCLCHEM and retrieve appropriate quantities for RADEX
         if chem_model:
+            print("Running UCLCHEM")
+            
             shock_model = workerfunctions.run_uclchem(
                 vs, initial_dens, DIREC, shock_read=True)
 
@@ -47,20 +52,22 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH, chem_model=True):
             dlength_index = shock_model["distance"].index(
                 min(shock_model["distance"], key=lambda x: abs(x-dlength)))
 
+            print("dlength_index={0}".format(dlength_index))
+
             # Need to find the maximum in temp
-            max_temp_indx = shock_model["temp"].index(
-                np.max(shock_model["temp"]))
+            # max_temp_indx = shock_model["temp"].index(
+            #     np.max(shock_model["temp"]))
 
             # Average the quantities across the dissipation region
             resolved_T = workerfunctions.resolved_quantity(
-                shock_model["dens"][max_temp_indx:dlength_index], 
-                shock_model["temp"][max_temp_indx:dlength_index], 
-                shock_model["distance"][max_temp_indx:dlength_index]
+                shock_model["dens"][1:dlength_index], 
+                shock_model["temp"][1:dlength_index], 
+                shock_model["distance"][1:dlength_index]
             )
             resolved_n = workerfunctions.resolved_quantity(
-                shock_model["dens"][max_temp_indx:dlength_index],
-                shock_model["dens"][max_temp_indx:dlength_index],
-                shock_model["distance"][max_temp_indx:dlength_index]
+                shock_model["dens"][1:dlength_index],
+                shock_model["dens"][1:dlength_index],
+                shock_model["distance"][1:dlength_index]
             )
 
             coldens_H = shock_model["coldens"]
@@ -68,21 +75,35 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH, chem_model=True):
             N = [a*b for a, b in zip(coldens_H, abund)]
 
             resolved_N = workerfunctions.resolved_quantity(
-                shock_model["dens"][max_temp_indx:dlength_index],
-                N[max_temp_indx:dlength_index],
-                shock_model["distance"][max_temp_indx:dlength_index]
+                shock_model["dens"][1:dlength_index],
+                N[1:dlength_index],
+                shock_model["distance"][1:dlength_index]
             )
 
+        print("Writing the radex inputs")
         # Write the radex input file
-        write_radex_input(spec, resolved_n, resolved_T, resolved_n, resolved_N, dv,
-                          DIREC, RADEX_PATH, f_min=290, f_max=360)
+        write_radex_input(spec, resolved_n, resolved_T, resolved_n, resolved_N, 
+            dv, vs, initial_dens, DIREC, RADEX_PATH, f_min=290, f_max=360)
 
+        print("Running radex")
         # Run radex
-        os.system('radex < {0}/radex-input/{1}/n{2:1.0E}T{3}N{4:2.1E}.inp &> /dev/null'.format(
-            DIREC, spec, int(resolved_n), int(resolved_T), resolved_N)) # &> pipes stdout and stderr
-        
-        # Read the radex output
-        radex_output = read_radex_output(spec, transition, resolved_n, resolved_T, resolved_N, DIREC)
+        sp.run('radex < {0}/radex-input/{1}/vs{2}n{3:1.0E}.inp &> /dev/null'.format(
+            DIREC, spec, int(vs), int(initial_dens)), shell = True)  # &> pipes stdout and stderr
+
+        output_file_path = ('{0}/radex-output/{1}/vs{2}n{3:1.0E}.out'.format(
+            DIREC, spec, int(vs), int(initial_dens)))
+
+        # This block ensures that the output file exists before attempting to read it
+        while not os.path.exists(output_file_path):
+            time.sleep(1)
+
+            print("Waiting for {0}".format(output_file_path))
+        if os.path.isfile(output_file_path):
+            # Read the radex output
+            radex_output = read_radex_output(
+                spec, transition, vs, initial_dens, DIREC)
+        else:
+            raise ValueError("%s isn't a file!" % output_file_path)
 
         # Determine the flux density
         trial_data['flux'].append(radex_output["flux"])
@@ -92,22 +113,14 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH, chem_model=True):
 
 
 # Function to write the input to run Radex
-def write_radex_input(spec, ns, tkin, nh2, N, dv, DIREC, RADEX_PATH, f_min, f_max, vs=None, t=None):
+def write_radex_input(spec, ns, tkin, nh2, N, dv, vs, initial_dens, DIREC, RADEX_PATH, f_min, f_max):
     tbg=2.73
     # Open the text file that constitutes Radex's input file
-    if vs==None and t==None:
-        infile = open('{0}/radex-input/{1}/n{2:1.0E}T{3}N{4:2.1E}.inp'.format(
-            DIREC, spec, int(ns), int(tkin), N), 'w')
-    else:
-        infile = open('{0}/radex-input/{1}/v{2}n{3:1.0E}/t{4}.inp'.format(
-            DIREC, spec, int(vs), int(ns), int(t)), 'w')   
+    infile = open('{0}/radex-input/{1}/vs{2}n{3:1.0E}.inp'.format(
+        DIREC, spec, int(vs), int(initial_dens)), 'w')
     infile.write('{0}/data/{1}.dat\n'.format(RADEX_PATH,spec.lower()))  # Molecular data file
-    if vs==None and t==None:
-        infile.write('{0}/radex-output/{1}/n{2:1.0E}T{3}N{4:2.1E}.out\n'.format(
-            DIREC, spec, int(ns), int(tkin), N))  # Output file    
-    else:
-        infile.write('{0}/radex-output/{1}/v{2}n{3:1.4E}/t{4}.out\n'.format(DIREC,spec,int(vs),int(ns),int(t)))  # Output file
-    infile.write('{0} {1}\n'.format(f_min,f_max)) # Frequency range (0 0 is unlimited)
+    infile.write('{0}/radex-output/{1}/vs{2}n{3:1.0E}.out\n'.format(DIREC, spec, int(vs), int(initial_dens)))  # Output file
+    infile.write('{0} {1}\n'.format(f_min, f_max)) # Frequency range (0 0 is unlimited)
     infile.write('{0}\n'.format(tkin)) # Kinetic temperature (i.e. temp of gas)
     infile.write('1\n') # Number of collisional partners
     infile.write('H2\n') # Type of collisional partner
@@ -120,7 +133,7 @@ def write_radex_input(spec, ns, tkin, nh2, N, dv, DIREC, RADEX_PATH, f_min, f_ma
     infile.close()
 
 
-def read_radex_output(spec, transition, n, T, N, DIREC):
+def read_radex_output(spec, transition, vs, initial_dens, DIREC):
 
     radex_output = {
         "temp": 0, 
@@ -130,51 +143,42 @@ def read_radex_output(spec, transition, n, T, N, DIREC):
         "flux": 0
     }
 
-    outfile = open('{0}/radex-output/{1}/n{2:1.0E}T{3}N{4:2.1E}.out'.format(
-                    DIREC, spec, int(n), int(T), N), 'r')
-    lines = outfile.readlines()
+    with open('{0}/radex-output/{1}/vs{2}n{3:1.0E}.out'.format(
+        DIREC, spec, int(vs), int(initial_dens)), 'r') as outfile:
+        lines = outfile.readlines()
 
-    # Loop through the simulation information in the header of the 
-    # output file
-    for line in lines[:8]:
-        words = line.split()
-        # Extract kinetic temperature
-        if (words[1] == "T(kin)"): 
-            radex_output["temp"] = float(words[-1])
-        # Extract density
-        if (words[1] == "Density"):
-            radex_output["dens"] = float(words[-1])
+        # Loop through the simulation information in the header of the 
+        # output file
+        for line in lines[:8]:
+            words = line.split()
+            # Extract kinetic temperature
+            if (words[1] == "T(kin)"): 
+                radex_output["temp"] = float(words[-1])
+            # Extract density
+            if (words[1] == "Density"):
+                radex_output["dens"] = float(words[-1])
+        
+        for line in lines[11:]:
+            words = line.split()
+
+            # Extract the RADEX data (easiest is to recognise when -- is used to 
+            # define the line transition)
+            if (transition == str(words[0]+words[1]+words[2])):  
+                radex_output["E_up"] = float(words[3]) # Extract the energy of the transition
+                radex_output["wav"] = float(words[5]) # Extract the wavelength of the transition
+                radex_output["flux"] = float(words[-1]) # Extract the integrated flux of the transition in cgs
     
-    for line in lines[11:]:
-        words = line.split()
-
-        # Extract the RADEX data (easiest is to recognise when -- is used to 
-        # define the line transition)
-        if (transition == str(words[0]+words[1]+words[2])):  
-            radex_output["E_up"] = float(words[3]) # Extract the energy of the transition
-            radex_output["wav"] = float(words[5]) # Extract the wavelength of the transition
-            radex_output["flux"] = float(words[-1]) # Extract the integrated flux of the transition in cgs
-    
-    # Close the file
-    outfile.close()
-
     return radex_output
 
 
 # prior probability function 
 def ln_prior(x):
-    #temp
-    if x[0]<75 or x[0]>500:
+    # velocity
+    if x[0]<30 or x[0]>60:
         return False
-    #dens (log space)
+    # density (log space)
     elif x[1]<3 or x[1]>6:
         return False
-    # #N_sio (log space)
-    # elif x[2]<11 or x[2]>14:
-    #     return False
-    # #N_so (log space)
-    # elif x[3]<10 or x[3]>13:
-    #     return False
     else:
         return True
 
@@ -190,7 +194,7 @@ def ln_likelihood(x, observed_data, DIREC, RADEX_PATH):
     }
 
     # Pack the parameters in to the y array for emcee
-    # 0 is T, 1 is n 
+    # 0 is vs, 1 is n (initial density)
     y = [x[0], 10**x[1]]
 
     # Checks to see whether the randomly selected values of x are within
@@ -204,6 +208,7 @@ def ln_likelihood(x, observed_data, DIREC, RADEX_PATH):
         theoretical_data['flux'] = trial_data['flux']
         theoretical_data['N'] = trial_data['N']
     
+        print("Computing chi-squared statistic")
         # Determine chi-squared statistic and write it to file
         chi = chi_squared(theoretical_data['flux'], observed_data['source_flux'],  observed_data['source_flux_error'])
 

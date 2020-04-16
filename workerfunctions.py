@@ -16,8 +16,7 @@ import plotfunctions
 def run_uclchem(vs, n, DIREC, shock_read=True):
 
     # Define the table name
-    file_name = "phase1-n{0}".format(n)
-
+    file_name = "phase1-n{0:.2E}".format(n)
     # Check if phase 1 exists (as n is the only important factor here)
     try:
         # db.does_table_exist(db_params=config_file, table=file_name)
@@ -48,6 +47,8 @@ def run_uclchem(vs, n, DIREC, shock_read=True):
             },
             ["SIO", "SO"])
     
+        print("UCLCHEM run complete")
+
         times, dens, temp, abundances = plotfunctions.read_uclchem(
             "{0}/UCLCHEM/output/data/v{1:.2E}n{2}.dat".format(DIREC, vs, n), ["SIO", "SO"])
     
@@ -112,7 +113,7 @@ def resolved_quantity(density, measure, x):
         numerator =+ density[indx]*measure[indx]*dx
         denominator =+ density[indx]*dx
 
-        quantity = numerator/denominator
+    quantity = numerator/denominator
     return quantity
 
 
