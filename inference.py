@@ -1,15 +1,16 @@
-#!/usr/bin/python
 import glob
 import numpy as np
 import os
 import subprocess as sp
 import time
 
+import config
+import databasefunctions as db
 import workerfunctions
 
 
 
-def get_trial_data(params, observed_data, DIREC, RADEX_PATH, chem_model=True):
+def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
     
     print("Getting trial data")
 
@@ -21,68 +22,54 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH, chem_model=True):
     }
 
     # Unpack the parameters
-    if chem_model:
-        vs, initial_dens, N_sio, N_so = params[0], params[1], np.nan, np.nan # N_sio and N_so are set to nan for continuity
-    else:
-        temp, initial_dens, N_sio, N_so = params[0], params[1], params[2], params[3]
-    
+    vs, initial_dens = params[0], params[1]
+
+    # Determine the dissipation length and identify
+    # the point that it begins (max_temp_indx)
+    dlength = 12.0*3.08e18*vs/initial_dens
+
+    # Convert to time
+    t_diss = (dlength/(vs*1e5))/(60*60*24*365)
+
+    # Run the UCLCHEM model up to the dissipation length time analogue
+    print("Running UCLCHEM")
+    shock_model = workerfunctions.run_uclchem(
+        vs, initial_dens, t_diss, DIREC)
+
+    # Average the quantities across the dissipation region
+    # (i.e. the time that we've evolved the model for)
+    T = workerfunctions.resolved_quantity(
+        shock_model["dens"][1:],
+        shock_model["temp"][1:],
+        shock_model["times"][1:]
+    )
+    n = workerfunctions.resolved_quantity(
+        shock_model["dens"][1:],
+        shock_model["dens"][1:],
+        shock_model["times"][1:]
+    )
+
     for spec_indx, spec in enumerate(observed_data["species"]):    
         # Store the species
         trial_data['species'].append(spec)
 
-        # Set the column density
-        if spec == "SIO":
-            N = N_sio
-        elif spec == "SO":
-            N = N_so
+        # Get the abundances
+        abund = shock_model["abundances"][spec_indx][1:]
 
+        # Set the column density
+        N = workerfunctions.resolved_quantity(
+            shock_model["dens"][1:],
+            shock_model["H_coldens"][1:]*abund,
+            shock_model["times"][1:]
+        )
+
+        # Get the linewidth and relevant transition
         dv = observed_data["linewidths"][spec_indx]
         transition = observed_data["transitions"][spec_indx]
-        
-        # Run UCLCHEM and retrieve appropriate quantities for RADEX
-        if chem_model:
-            print("Running UCLCHEM")
-            
-            shock_model = workerfunctions.run_uclchem(
-                vs, initial_dens, DIREC, shock_read=True)
-
-            # Determine the dissipation length and identify 
-            # the point that it begins (max_temp_indx)
-            dlength = 12.0*3.08e18*vs/initial_dens
-            dlength_index = shock_model["distance"].index(
-                min(shock_model["distance"], key=lambda x: abs(x-dlength)))
-
-            print("dlength_index={0}".format(dlength_index))
-
-            # Need to find the maximum in temp
-            # max_temp_indx = shock_model["temp"].index(
-            #     np.max(shock_model["temp"]))
-
-            # Average the quantities across the dissipation region
-            resolved_T = workerfunctions.resolved_quantity(
-                shock_model["dens"][1:dlength_index], 
-                shock_model["temp"][1:dlength_index], 
-                shock_model["distance"][1:dlength_index]
-            )
-            resolved_n = workerfunctions.resolved_quantity(
-                shock_model["dens"][1:dlength_index],
-                shock_model["dens"][1:dlength_index],
-                shock_model["distance"][1:dlength_index]
-            )
-
-            coldens_H = shock_model["coldens"]
-            abund = shock_model["abundances"][spec_indx]
-            N = [a*b for a, b in zip(coldens_H, abund)]
-
-            resolved_N = workerfunctions.resolved_quantity(
-                shock_model["dens"][1:dlength_index],
-                N[1:dlength_index],
-                shock_model["distance"][1:dlength_index]
-            )
 
         print("Writing the radex inputs")
         # Write the radex input file
-        write_radex_input(spec, resolved_n, resolved_T, resolved_n, resolved_N, 
+        write_radex_input(spec, n, T, n, N, 
             dv, vs, initial_dens, DIREC, RADEX_PATH, f_min=290, f_max=360)
 
         print("Running radex")
@@ -96,7 +83,6 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH, chem_model=True):
         # This block ensures that the output file exists before attempting to read it
         while not os.path.exists(output_file_path):
             time.sleep(1)
-
             print("Waiting for {0}".format(output_file_path))
         if os.path.isfile(output_file_path):
             # Read the radex output
@@ -107,7 +93,7 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH, chem_model=True):
 
         # Determine the flux density
         trial_data['flux'].append(radex_output["flux"])
-        trial_data['N'].append(resolved_N)
+        trial_data['N'].append(N)
 
     return trial_data
 
@@ -179,12 +165,15 @@ def ln_prior(x):
     # density (log space)
     elif x[1]<3 or x[1]>6:
         return False
+    # velocity condition for C-type shock (see Jon's UCLCHEM paper)
+    elif x[0]>45 and x[1]>=6:
+        return False
     else:
         return True
 
 
 #likelihood function
-def ln_likelihood(x, observed_data, DIREC, RADEX_PATH):
+def ln_likelihood(x, observed_data, database_info, DIREC, RADEX_PATH):
 
     # Declare a dictionary to hold data
     theoretical_data = {
@@ -200,7 +189,8 @@ def ln_likelihood(x, observed_data, DIREC, RADEX_PATH):
     # Checks to see whether the randomly selected values of x are within
     # the desired range using ln_prior
     if ln_prior(x):
-
+        
+        print("Parameters within prior range")
         #call radex to determine flux of given transitions
         trial_data = get_trial_data(y, observed_data, DIREC, RADEX_PATH)
     
@@ -211,6 +201,14 @@ def ln_likelihood(x, observed_data, DIREC, RADEX_PATH):
         print("Computing chi-squared statistic")
         # Determine chi-squared statistic and write it to file
         chi = chi_squared(theoretical_data['flux'], observed_data['source_flux'],  observed_data['source_flux_error'])
+
+        # Put the data in to a list for easier reference when storing
+        data = [observed_data["source"], theoretical_data['flux'], observed_data['source_flux'],
+                observed_data['source_flux_error'], chi]
+
+        # Save the best fit data
+        db.insert_data(db_params=database_info["bestfit_config_file"],
+                       table="{0}-bestfit-conditions".format(observed_data["source"]), data=data)
 
         return -0.5*chi
     

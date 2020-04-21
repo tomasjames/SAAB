@@ -25,7 +25,7 @@ from correlation import autocorr_new
 
 
 def param_select():
-    vs = random.uniform(30, 60)
+    vs = random.uniform(10, 30)
     initial_dens = random.uniform(3, 6)
 
     return vs, initial_dens
@@ -66,9 +66,10 @@ if __name__ == '__main__':
         'Z': [197.515, 2*850.217] # From Splatalogue (https://www.cv.nrao.edu/php/splat/species_metadata_displayer.php?species_id=20)
     }
 
-    # Declare the database connection 
+    # Declare the database connections
     config_file = config.config_file(db_init_filename='database.ini', section='postgresql')
-    
+    bestfit_config_file = config.config_file(db_init_filename='database.ini', section='bestfit_conditions')
+
     # Read in the whole data file containing sources and source flux
     with open(datafile, newline='') as f:
         reader = csv.reader(f)
@@ -115,10 +116,12 @@ if __name__ == '__main__':
                 (data_storage["source_flux_dens_error_Jy"][0]*1e-23)*linewidth_f
             )
             
-            # Checks to see whether the table exists; if so, delete it
+            # Checks to see whether the tables exists; if so, delete it
             if db.does_table_exist(db_params=config_file, table=source_name):
                 db.drop_table(db_params=config_file, table=source_name)
-            
+            if db.does_table_exist(db_params=bestfit_config_file, table="{0}_bestfit_conditions".format(source_name)):
+                db.drop_table(db_params=bestfit_config_file, table="{0}_bestfit_conditions".format(source_name))
+
             observed_data.append(data_storage)
             data_storage = reset_data_dict() # Reset the data dict
         else:
@@ -133,8 +136,24 @@ if __name__ == '__main__':
                 )
                 """.format(source_name),
             )
-            # Create the table
+
+            bestfit_commands = (
+                """
+                CREATE TABLE IF NOT EXISTS {0}_bestfit_conditions (
+                    id SERIAL PRIMARY KEY,
+                    species REAL NOT NULL,
+                    radex_flux REAL NOT NULL,
+                    source_flux REAL NOT NULL,
+                    source_flux_error REAL NOT NULL,
+                    chi_squared REAL NOT NULL
+                )
+                """.format(source_name),
+            )
+            
+
+            # Create the tables
             db.create_table(db_params=config_file, commands=commands)
+            db.create_table(db_params=bestfit_config_file, commands=bestfit_commands)
             
             # Append the data to the pre-existing entry in the dict-list
             observed_data[source_indx-1]['species'].append(species)
@@ -164,8 +183,8 @@ if __name__ == '__main__':
     physical_conditions = param_constraints(observed_data, sio_data, so_data)
     '''
 
-    continueFlag = False
-    nWalkers = 4 # Number of random walkers to sample parameter space
+    # continueFlag = False
+    nWalkers = 8 # Number of random walkers to sample parameter space
     nDim = 2 # Number of dimensions within the parameters
     nSteps = int(1e1) # Number of steps per walker
     
@@ -175,20 +194,28 @@ if __name__ == '__main__':
     backend = mc.backends.HDFBackend(filename)
     backend.reset(nWalkers, nDim)
 
-    autocorr_list = [[], [], [], []]
+    #Set up MPI Pool
+    pool = Pool()
 
     for obs in observed_data[:8]:
         if obs["species"] != ["SIO", "SO"]:
             continue
         else:
+
+            # Define the data required to be passed to the likelihood functions
+            # so that it can save its fitting parameters to a database
+            database_info = {
+                "bestfit_config_file": bestfit_config_file
+            }
+
             sampler = mc.EnsembleSampler(nWalkers, nDim, ln_likelihood, 
-                args=(obs, DIREC, RADEX_PATH,), backend=backend, pool=Pool())
+                args=(obs, database_info, DIREC, RADEX_PATH), backend=backend, pool=pool)
             pos = []
             
-            if not continueFlag:
-                for i in range(nWalkers):
-                    vs, initial_dens = param_select()
-                    pos.append([vs, initial_dens])
+            # Select the parameters
+            for i in range(nWalkers):
+                vs, initial_dens = param_select()
+                pos.append([vs, initial_dens])
 
             print(obs["source"])
 
@@ -237,7 +264,6 @@ if __name__ == '__main__':
             chain_length = len(chains)
 
             # Throw away the first 20% or so of samples so as to avoid considering initial burn-in period
-            # TODO Add Geweke test to ensure convergence has occured outside of burn-in period
             chain = np.array(chains[int(chain_length*0.2):])
 
             #Name params for chainconsumer (i.e. axis labels)
@@ -256,3 +282,4 @@ if __name__ == '__main__':
             # summary = c.analysis.get_summary()
 
             fig_walks = c.plotter.plot_walks(filename=file_out_walk, display=False, plot_posterior=True)
+    pool.close()

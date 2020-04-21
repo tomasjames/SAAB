@@ -2,7 +2,7 @@ import os
 import sys
 # insert at 1, 0 is the script path (or '' in REPL)
 # This is so that the code can execute from a directory
-# below the UCLCHEM directory
+# above the UCLCHEM directory
 sys.path.insert(1, "{0}/UCLCHEM/".format(os.getcwd()))
 sys.path.insert(1, "{0}/UCLCHEM/scripts/".format(os.getcwd()))
 
@@ -13,10 +13,24 @@ import plotfunctions
 
 
 
-def run_uclchem(vs, n, DIREC, shock_read=True):
+def run_uclchem(vs, n, t_evol, DIREC):
 
     # Define the table name
     file_name = "phase1-n{0:.2E}".format(n)
+
+    # Set r_out in order to set the extinction correctly
+    # within UCLCHEM
+    if n <= 1e2:
+        r_out = 5.3
+    elif 1e2 < n <= 1e3:
+        r_out = 2.6
+    elif 1e3 < n <= 1e4:
+        r_out = 0.5
+    elif 1e4 < n <= 1e5:
+        r_out = 0.25
+    else:
+        r_out = 0.05
+
     # Check if phase 1 exists (as n is the only important factor here)
     try:
         # db.does_table_exist(db_params=config_file, table=file_name)
@@ -26,6 +40,7 @@ def run_uclchem(vs, n, DIREC, shock_read=True):
             {
                 "initialDens": 1e2,
                 "finalDens": n,
+                "rout": r_out,
                 "phase": 1,
                 "readAbunds": 0,
                 "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
@@ -38,12 +53,13 @@ def run_uclchem(vs, n, DIREC, shock_read=True):
             {
                 "initialDens": 2*n,
                 "finalDens": n,
+                "finalTime": t_evol,
                 "vs": vs,
+                "rout": r_out,
                 "phase": 2,
                 "readAbunds": 1,
                 "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
-                "outputFile": "{0}/UCLCHEM/output/data/v{1:.2E}n{2}.dat".format(DIREC, vs, n),
-                "shockFile": "{0}/UCLCHEM/output/data/shock-v{1:.2E}n{2}.dat".format(DIREC, vs, n)
+                "outputFile": "{0}/UCLCHEM/output/data/v{1:.2E}n{2}.dat".format(DIREC, vs, n)
             },
             ["SIO", "SO"])
     
@@ -52,28 +68,17 @@ def run_uclchem(vs, n, DIREC, shock_read=True):
         times, dens, temp, abundances = plotfunctions.read_uclchem(
             "{0}/UCLCHEM/output/data/v{1:.2E}n{2}.dat".format(DIREC, vs, n), ["SIO", "SO"])
     
-        if shock_read:
-            dummy, dummy, dummy, vel, av, coldens = read_shock_data(
-                "{0}/UCLCHEM/output/data/shock-v{1:.2E}n{2}.dat".format(DIREC, vs, n))
+        # Determine the H column density through the shock
+        coldens = [r_out*(3e18)*n_i for n_i in dens]
 
-            distance = time_distance_transform(vel, times)
-
-            return {"times": times, 
-                    "distance": distance, 
-                    "dens": dens, 
-                    "temp": temp, 
-                    "vel": vel, 
-                    "av": av, 
-                    "coldens": coldens, 
-                    "abundances": abundances}
-        else:
-            return {"times": times,
-                    "dens": dens,
-                    "temp": temp,
-                    "abundances": abundances}
+        return {"times": times,
+                "dens": dens,
+                "temp": temp,
+                "abundances": abundances,
+                "H_coldens": coldens}
 
 
-
+'''
 def read_shock_data(filename):
     a = open(filename).read()
     a = a.split('\n')
@@ -103,21 +108,21 @@ def read_shock_data(filename):
                 N.append(float(bits[-2].replace('D', 'E')))
 
     return time, dens, temp, vel, av, N
+'''
 
 
-
-def resolved_quantity(density, measure, x):
+def resolved_quantity(density, measure, t):
     
     for indx in range(1, len(density)):
-        dx = x[indx] - x[indx-1] 
-        numerator =+ density[indx]*measure[indx]*dx
-        denominator =+ density[indx]*dx
+        dt = t[indx] - t[indx-1] 
+        numerator =+ density[indx]*measure[indx]*dt
+        denominator =+ density[indx]*dt
 
     quantity = numerator/denominator
     return quantity
 
 
-
+'''
 def time_distance_transform(vel, times):
     # Transform time in to distance (with 0 based array to account for the fact that
     # distance begins from 0)
@@ -127,3 +132,4 @@ def time_distance_transform(vel, times):
         distance.append((vel[i]*1e5)*(times[i] - times[i-1]) * (60*60*24*365) + distance[i-1])
 
     return distance
+'''

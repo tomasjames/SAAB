@@ -47,6 +47,29 @@ def insert_chain_data(db_params, table, chain):
             conn.close()
 
 
+def insert_data(db_params, table, data):
+    """ insert multiple vendors into the vendors table  """
+    sql = "INSERT INTO {0}(id, species, radex_flux, source_flux, source_flux_error, chi_squared) VALUES(DEFAULT, {1}, {2}, {3}, {4}, {5}, {6})".format(
+        table, data[0], data[1], data[2], data[3], data[4], data[5])
+    conn = None
+    try:
+        # connect to the PostgreSQL database
+        conn = psycopg2.connect(**db_params)
+        # create a new cursor
+        cur = conn.cursor()
+        # execute the INSERT statement
+        cur.execute(sql, table)
+        # commit the changes to the database
+        conn.commit()
+        # close communication with the database
+        cur.close()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def get_chains(db_params, table, column_names):
     """ query chains from the chain_storage table """
     conn = None
