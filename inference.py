@@ -17,6 +17,7 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
     # Declare dictionary to hold trial data
     trial_data = {
         'species': [],
+        'transitions': [],
         'N': [],
         'flux': []
     }
@@ -55,17 +56,20 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
 
         # Get the abundances
         abund = shock_model["abundances"][spec_indx][1:]
-
+        
         # Set the column density
         N = workerfunctions.resolved_quantity(
             shock_model["dens"][1:],
-            shock_model["H_coldens"][1:]*abund,
+            [a*b for a, b in zip(shock_model["H_coldens"][1:], abund)],
             shock_model["times"][1:]
         )
 
         # Get the linewidth and relevant transition
         dv = observed_data["linewidths"][spec_indx]
         transition = observed_data["transitions"][spec_indx]
+
+        # Store the transitions
+        trial_data['transitions'].append(transition)
 
         print("Writing the radex inputs")
         # Write the radex input file
@@ -173,14 +177,7 @@ def ln_prior(x):
 
 
 #likelihood function
-def ln_likelihood(x, observed_data, database_info, DIREC, RADEX_PATH):
-
-    # Declare a dictionary to hold data
-    theoretical_data = {
-        'spec': [],
-        'N': [],
-        'flux': []
-    }
+def ln_likelihood(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH):
 
     # Pack the parameters in to the y array for emcee
     # 0 is vs, 1 is n (initial density)
@@ -194,21 +191,18 @@ def ln_likelihood(x, observed_data, database_info, DIREC, RADEX_PATH):
         #call radex to determine flux of given transitions
         trial_data = get_trial_data(y, observed_data, DIREC, RADEX_PATH)
     
-        theoretical_data['spec'] = trial_data['species']
-        theoretical_data['flux'] = trial_data['flux']
-        theoretical_data['N'] = trial_data['N']
-    
         print("Computing chi-squared statistic")
         # Determine chi-squared statistic and write it to file
-        chi = chi_squared(theoretical_data['flux'], observed_data['source_flux'],  observed_data['source_flux_error'])
+        chi = chi_squared(
+            trial_data['flux'], observed_data['source_flux'],  observed_data['source_flux_error'])
 
         # Put the data in to a list for easier reference when storing
-        data = [observed_data["source"], theoretical_data['flux'], observed_data['source_flux'],
-                observed_data['source_flux_error'], chi]
+        data = [trial_data['species'], trial_data['transitions'], x[0], 10**x[1], trial_data['flux'],
+                    observed_data['source_flux'], observed_data['source_flux_error'], chi]
 
-        # Save the best fit data
-        db.insert_data(db_params=database_info["bestfit_config_file"],
-                       table="{0}-bestfit-conditions".format(observed_data["source"]), data=data)
+        # Save the best fit data fof each species
+        db.insert_data(db_params=bestfit_config_file,
+                       table="{0}_bestfit_conditions".format(observed_data["source"]), data=data)
 
         return -0.5*chi
     

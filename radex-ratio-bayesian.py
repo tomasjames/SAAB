@@ -21,7 +21,6 @@ import matplotlib.pyplot as plt
 import config as config
 import databasefunctions as db
 from inference import ln_likelihood, reset_data_dict, linewidth_conversion, delete_radex_io
-from correlation import autocorr_new
 
 
 def param_select():
@@ -124,6 +123,9 @@ if __name__ == '__main__':
 
             observed_data.append(data_storage)
             data_storage = reset_data_dict() # Reset the data dict
+
+            sys.exit()
+            
         else:
             
             # Define the commands necessary to create table in database (raw SQL string)
@@ -141,11 +143,14 @@ if __name__ == '__main__':
                 """
                 CREATE TABLE IF NOT EXISTS {0}_bestfit_conditions (
                     id SERIAL PRIMARY KEY,
-                    species REAL NOT NULL,
-                    radex_flux REAL NOT NULL,
-                    source_flux REAL NOT NULL,
-                    source_flux_error REAL NOT NULL,
-                    chi_squared REAL NOT NULL
+                    species TEXT [] NOT NULL,
+                    transitions TEXT [] NOT NULL,
+                    vs REAL NOT NULL,
+                    n REAL NOT NULL,
+                    radex_flux DOUBLE PRECISION [] NOT NULL,
+                    source_flux DOUBLE PRECISION [] NOT NULL,
+                    source_flux_error DOUBLE PRECISION [] NOT NULL,
+                    chi_squared DOUBLE PRECISION NOT NULL
                 )
                 """.format(source_name),
             )
@@ -186,7 +191,7 @@ if __name__ == '__main__':
     # continueFlag = False
     nWalkers = 8 # Number of random walkers to sample parameter space
     nDim = 2 # Number of dimensions within the parameters
-    nSteps = int(1e1) # Number of steps per walker
+    nSteps = int(1e2) # Number of steps per walker
     
     # Set up the backend for temporary chain storage
     # Don't forget to clear it in case the file already exists
@@ -195,21 +200,15 @@ if __name__ == '__main__':
     backend.reset(nWalkers, nDim)
 
     #Set up MPI Pool
-    pool = Pool()
+    # pool = Pool()
 
     for obs in observed_data[:8]:
         if obs["species"] != ["SIO", "SO"]:
             continue
         else:
 
-            # Define the data required to be passed to the likelihood functions
-            # so that it can save its fitting parameters to a database
-            database_info = {
-                "bestfit_config_file": bestfit_config_file
-            }
-
             sampler = mc.EnsembleSampler(nWalkers, nDim, ln_likelihood, 
-                args=(obs, database_info, DIREC, RADEX_PATH), backend=backend, pool=pool)
+                args=(obs, bestfit_config_file, DIREC, RADEX_PATH), backend=backend)
             pos = []
             
             # Select the parameters
@@ -245,12 +244,6 @@ if __name__ == '__main__':
             print("Getting data from database")
 
             # Read the database to retrieve the data
-            print(config_file)
-            print(obs["source"])
-            print([
-                "vs",
-                "initial_dens",
-            ])
             chains = db.get_chains(
                 db_params=config_file, 
                 table=obs["source"], 

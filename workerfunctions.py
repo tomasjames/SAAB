@@ -56,8 +56,10 @@ def run_uclchem(vs, n, t_evol, DIREC):
                 "finalTime": t_evol,
                 "vs": vs,
                 "rout": r_out,
+                "switch": 0,
                 "phase": 2,
                 "readAbunds": 1,
+                "desorb": 1,
                 "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
                 "outputFile": "{0}/UCLCHEM/output/data/v{1:.2E}n{2}.dat".format(DIREC, vs, n)
             },

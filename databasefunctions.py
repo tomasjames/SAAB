@@ -27,7 +27,7 @@ def create_table(db_params, commands):
 	
 def insert_chain_data(db_params, table, chain):
     """ insert multiple vendors into the vendors table  """
-    sql = "INSERT INTO {0}(id, vs, initial_dens) VALUES (DEFAULT, {1}, {2});".format(table, chain[0], chain[1])
+    sql = "INSERT INTO {0} (id, vs, initial_dens) VALUES (DEFAULT, {1}, {2});".format(table, chain[0], chain[1])
     conn = None
     try:
         # connect to the PostgreSQL database
@@ -49,8 +49,7 @@ def insert_chain_data(db_params, table, chain):
 
 def insert_data(db_params, table, data):
     """ insert multiple vendors into the vendors table  """
-    sql = "INSERT INTO {0}(id, species, radex_flux, source_flux, source_flux_error, chi_squared) VALUES(DEFAULT, {1}, {2}, {3}, {4}, {5}, {6})".format(
-        table, data[0], data[1], data[2], data[3], data[4], data[5])
+    sql = """INSERT INTO {0} (id, species, transitions, vs, n, radex_flux, source_flux, source_flux_error, chi_squared) VALUES ( DEFAULT, ARRAY [ '{1}', '{2}' ], ARRAY [ '{3}', '{4}' ], {5}, {6}, ARRAY [ {7}, {8} ], ARRAY [ {9}, {10} ], ARRAY [ {11}, {12} ], {13});""".format(table, str(data[0][0]), str(data[0][1]), str(data[1][0]), str(data[1][1]), data[2], data[3], data[4][0], data[4][1], data[5][0], data[5][1], data[6][0], data[6][1], data[7])
     conn = None
     try:
         # connect to the PostgreSQL database
@@ -80,6 +79,35 @@ def get_chains(db_params, table, column_names):
             "SELECT {0}, {1} FROM {2};".format(
                 column_names[0], 
                 column_names[1],  
+                table
+            )
+        )
+        rows = cur.fetchall()
+        # rows = [r[0] for r in cur.fetchall()]
+        print("The number of entries: ", cur.rowcount)
+        cur.close()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print("ERROR THROWN")
+        print(error)
+        rows = None
+    finally:
+        if conn is not None:
+            conn.close()
+    return rows
+
+
+def get_bestfit(db_params, table, column_names):
+    """ query chains from the chain_storage table """
+    conn = None
+    try:
+        conn = psycopg2.connect(**db_params)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT {0}, {1}, {2}, {3} FROM {4};".format(
+                column_names[0],
+                column_names[1],
+                column_names[2],
+                column_names[3],
                 table
             )
         )
