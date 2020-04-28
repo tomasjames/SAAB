@@ -16,7 +16,7 @@ import plotfunctions
 def run_uclchem(vs, n, t_evol, DIREC):
 
     # Define the table name
-    file_name = "phase1-n{0:.2E}".format(n)
+    file_name = "phase1-n{0:.6E}".format(n)
 
     # Set r_out in order to set the extinction correctly
     # within UCLCHEM
@@ -61,14 +61,14 @@ def run_uclchem(vs, n, t_evol, DIREC):
                 "readAbunds": 1,
                 "desorb": 1,
                 "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
-                "outputFile": "{0}/UCLCHEM/output/data/v{1:.2E}n{2}.dat".format(DIREC, vs, n)
+                "outputFile": "{0}/UCLCHEM/output/data/v{1:.6E}n{2:.6E}.dat".format(DIREC, vs, n)
             },
             ["SIO", "SO"])
     
         print("UCLCHEM run complete")
 
         times, dens, temp, abundances = plotfunctions.read_uclchem(
-            "{0}/UCLCHEM/output/data/v{1:.2E}n{2}.dat".format(DIREC, vs, n), ["SIO", "SO"])
+            "{0}/UCLCHEM/output/data/v{1:.6E}n{2:.6E}.dat".format(DIREC, vs, n), ["SIO", "SO"])
     
         # Determine the H column density through the shock
         coldens = [r_out*(3e18)*n_i for n_i in dens]
