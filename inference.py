@@ -9,7 +9,6 @@ import databasefunctions as db
 import workerfunctions
 
 
-
 def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
     
     print("Getting trial data")
@@ -95,7 +94,11 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
         else:
             raise ValueError("%s isn't a file!" % output_file_path)
 
-        # Determine the flux density
+        # Catch any radex saturation problems
+        if radex_output["flux"] < 0 or radex_output["flux"] > 1e2:
+            radex_output["flux"] = np.inf
+
+        # Append the radex output data to the trial_data dictionary
         trial_data['flux'].append(radex_output["flux"])
         trial_data['N'].append(N)
 
@@ -164,13 +167,10 @@ def read_radex_output(spec, transition, vs, initial_dens, DIREC):
 # prior probability function 
 def ln_prior(x):
     # velocity
-    if x[0]<30 or x[0]>60:
+    if x[0]<5 or x[0]>20:
         return False
     # density (log space)
-    elif x[1]<3 or x[1]>6:
-        return False
-    # velocity condition for C-type shock (see Jon's UCLCHEM paper)
-    elif x[0]>45 and x[1]>=6:
+    elif x[1]<2 or x[1]>5:
         return False
     else:
         return True
@@ -196,11 +196,14 @@ def ln_likelihood(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH):
         chi = chi_squared(
             trial_data['flux'], observed_data['source_flux'],  observed_data['source_flux_error'])
 
+        if trial_data['flux'] == np.inf:
+            trial_data['flux'] = "Infinity"
+
         # Put the data in to a list for easier reference when storing
         data = [trial_data['species'], trial_data['transitions'], x[0], 10**x[1], trial_data['flux'],
                     observed_data['source_flux'], observed_data['source_flux_error'], chi]
 
-        # Save the best fit data fof each species
+        # Save the best fit data for each species
         db.insert_data(db_params=bestfit_config_file,
                        table="{0}_bestfit_conditions".format(observed_data["source"]), data=data)
 
