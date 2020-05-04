@@ -317,24 +317,18 @@ def reset_dict():
     return local_conditions
 
 
-def reset_data_dict():
-    data = {
-        'source': "", # The source name
-        'sample_size': 0, # The sample size in beams
-        'species': [], # Species of interest
-        'transitions': [], # Transitions of interest
-        'transition_freqs': [], # Transition frequencies according to Splatalogue in GHz
-        'linewidths': [], # Linewidths for the transitions in km/s
-        'source_flux_dens_Jy': [], # Flux of species in Jy (original in mJy)
-        'source_flux_dens_error_Jy': [], # Error for each flux in Jy (original in mJy)
-        'source_flux': [],
-        'source_flux_error': []
-    }
-    return data
-
 
 def delete_radex_io(species, DIREC):
     for spec in species:
         filelist = glob.glob(os.path.join("{0}/radex-output/{1}/".format(DIREC, spec), "*.out"))
         for file_instance in filelist:
             os.remove(file_instance)
+
+
+def delete_uclchem_io(DIREC):
+    for path in ["data", "start"]:
+        filelist = glob.glob(os.path.join(
+            "{0}/UCLCHEM/output/path/".format(DIREC), "*.dat"))
+        for file_instance in filelist:
+            os.remove(file_instance)
+

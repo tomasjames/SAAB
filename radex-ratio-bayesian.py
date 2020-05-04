@@ -20,8 +20,7 @@ import matplotlib.pyplot as plt
 
 import config as config
 import databasefunctions as db
-from inference import ln_likelihood, reset_data_dict, linewidth_conversion, delete_radex_io
-
+import workerfunctions
 
 def param_select():
     vs = random.uniform(10, 30)
@@ -41,12 +40,6 @@ if __name__ == '__main__':
 
     # Define the datafile
     datafile = "{0}/data/tabula-sio_intratio.csv".format(DIREC)
-
-    # Define dictionary to store data
-    data_storage = reset_data_dict()
-
-    # And a list to store the data dictionaries
-    observed_data = []
 
     # Define molecular data
     sio_data = {
@@ -79,112 +72,7 @@ if __name__ == '__main__':
         data = list(reader)
         f.close()
 
-    # Declare a variable to help track the concurrent sources
-    source_indx = 0
-
-    # Extract the columns from the data and insert in to data list
-    for indx, entry in enumerate(data[1:]): # data[0] is the header row
-        source_name = entry[0] # The source name
-        sample_size = entry[3] # The sample size (in beams)
-        species = entry[4][0:entry[4].find(" ")].upper() # The molecule of interest
-        transitions = entry[4][entry[4].find(" ")+1:].replace("–", "--").replace("(", "_").replace(")", "") # The transition of the molecule
-        source_flux_dens_Jy = (float(entry[5][0:entry[5].find("±")])/1e3) # The observed flux density (Jy)
-        source_flux_dens_error_Jy = (float(entry[5][entry[5].find("±")+1:])/1e3) # The observed flux error (Jy)
-        linewidths = (float(entry[7])*1e3) # The linewidth (m/s)
-        
-        # Check to see whether this is the first data entry 
-        # Or whether the source already exists within the conditioned dictionary
-        if indx == 0 or observed_data[len(observed_data)-1]['source'] != source_name:
-            source_indx += 1
-            data_storage['source'] = source_name
-            data_storage['sample_size'] = sample_size
-            data_storage['species'].append(species)
-            data_storage['transitions'].append(transitions)
-            data_storage['source_flux_dens_Jy'].append(float(source_flux_dens_Jy))
-            data_storage['source_flux_dens_error_Jy'].append(float(source_flux_dens_error_Jy))
-            data_storage['linewidths'].append(float(linewidths))
-            
-            if species == "SIO":
-                transition_freq = 303.92696000*1e9
-            elif species == "SO":
-                transition_freq = 304.07791400*1e9
-            data_storage['transition_freqs'].append(transition_freq)
-
-            linewidth_f = linewidth_conversion(linewidths, transition_freq)
-            
-            data_storage["source_flux"].append(
-                (data_storage["source_flux_dens_Jy"][0]*1e-23)*linewidth_f
-            )
-            data_storage["source_flux_error"].append(
-                (data_storage["source_flux_dens_error_Jy"][0]*1e-23)*linewidth_f
-            )
-            
-            # Checks to see whether the tables exists; if so, delete it
-            if db.does_table_exist(db_pool=db_pool, table=source_name):
-                db.drop_table(db_pool=db_pool, table=source_name)
-            if db.does_table_exist(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(source_name)):
-                db.drop_table(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(source_name))
-
-            observed_data.append(data_storage)
-            data_storage = reset_data_dict() # Reset the data dict            
-        else:
-            
-            # Define the commands necessary to create table in database (raw SQL string)
-            commands = (
-                """
-                CREATE TABLE IF NOT EXISTS {0} (
-                    id SERIAL PRIMARY KEY,
-                    vs REAL NOT NULL,
-                    initial_dens REAL NOT NULL
-                )
-                """.format(source_name),
-            )
-
-            bestfit_commands = (
-                """
-                CREATE TABLE IF NOT EXISTS {0}_bestfit_conditions (
-                    id SERIAL PRIMARY KEY,
-                    species TEXT [] NOT NULL,
-                    transitions TEXT [] NOT NULL,
-                    vs REAL NOT NULL,
-                    initial_n REAL NOT NULL,
-                    resolved_T REAL NOT NULL,
-                    resolved_n REAL NOT NULL,
-                    N DOUBLE PRECISION [] NOT NULL,
-                    radex_flux DOUBLE PRECISION [] NOT NULL,
-                    source_flux DOUBLE PRECISION [] NOT NULL,
-                    source_flux_error DOUBLE PRECISION [] NOT NULL,
-                    chi_squared DOUBLE PRECISION NOT NULL
-                )
-                """.format(source_name),
-            )
-            
-
-            # Create the tables
-            db.create_table(db_pool=db_pool, commands=commands)
-            db.create_table(db_pool=db_bestfit_pool, commands=bestfit_commands)
-            
-            # Append the data to the pre-existing entry in the dict-list
-            observed_data[source_indx-1]['species'].append(species)
-            observed_data[source_indx-1]['transitions'].append(transitions)
-            observed_data[source_indx-1]['source_flux_dens_Jy'].append(source_flux_dens_Jy)
-            observed_data[source_indx-1]['source_flux_dens_error_Jy'].append(source_flux_dens_error_Jy)
-            observed_data[source_indx-1]['linewidths'].append(linewidths)
-
-            if species == "SIO":
-                transition_freq = 303.92696000*1e9
-            elif species == "SO":
-                transition_freq = 304.07791400*1e9
-            observed_data[source_indx-1]['transition_freqs'].append(transition_freq)
-
-            linewidth_f = linewidth_conversion(linewidths, transition_freq)
-            
-            observed_data[source_indx-1]["source_flux"].append(
-                (observed_data[source_indx-1]["source_flux_dens_Jy"][0]*1e-23)*linewidth_f
-            )
-            observed_data[source_indx-1]["source_flux_error"].append(
-                (observed_data[source_indx-1]["source_flux_dens_error_Jy"][0]*1e-23)*linewidth_f
-            )
+    observed_data = workerfunctions.parse_data(data, db_pool, db_bestfit_pool)
     
     '''
     # Determine the estimated column densities based on the temperature (and a number of 
@@ -204,14 +92,14 @@ if __name__ == '__main__':
     backend.reset(nWalkers, nDim)
 
     #Set up MPI Pool
-    pool = Pool(1)
+    pool = Pool(4)
 
     for obs in observed_data[:8]:
         if obs["species"] != ["SIO", "SO"]:
             continue
         else:
 
-            sampler = mc.EnsembleSampler(nWalkers, nDim, ln_likelihood, 
+            sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood, 
                 args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), backend=backend, pool=pool)
             pos = []
             
@@ -230,8 +118,9 @@ if __name__ == '__main__':
                 pos, prob, state = sampler.run_mcmc(pos, nBreak, progress=False) #start from where we left off previously 
 
                 for data in observed_data:
-                    # Delete the Radex input and output files
-                    delete_radex_io(data["species"], DIREC)
+                    # Delete the Radex and UCLCHEM input and output files
+                    inference.delete_radex_io(data["species"], DIREC)
+                    inference.delete_uclchem_io(DIREC)
                 
                 #chain is organized as chain[walker, step, parameter(s)]
                 chain = np.array(sampler.chain[:, :, :])
