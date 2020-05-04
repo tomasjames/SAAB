@@ -69,6 +69,10 @@ if __name__ == '__main__':
     config_file = config.config_file(db_init_filename='database.ini', section='postgresql')
     bestfit_config_file = config.config_file(db_init_filename='database.ini', section='bestfit_conditions')
 
+    # Set up the connection pools
+    db_pool = db.dbpool(config_file)
+    db_bestfit_pool = db.dbpool(bestfit_config_file)
+
     # Read in the whole data file containing sources and source flux
     with open(datafile, newline='') as f:
         reader = csv.reader(f)
@@ -116,16 +120,13 @@ if __name__ == '__main__':
             )
             
             # Checks to see whether the tables exists; if so, delete it
-            if db.does_table_exist(db_params=config_file, table=source_name):
-                db.drop_table(db_params=config_file, table=source_name)
-            if db.does_table_exist(db_params=bestfit_config_file, table="{0}_bestfit_conditions".format(source_name)):
-                db.drop_table(db_params=bestfit_config_file, table="{0}_bestfit_conditions".format(source_name))
+            if db.does_table_exist(db_pool=db_pool, table=source_name):
+                db.drop_table(db_pool=db_pool, table=source_name)
+            if db.does_table_exist(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(source_name)):
+                db.drop_table(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(source_name))
 
             observed_data.append(data_storage)
-            data_storage = reset_data_dict() # Reset the data dict
-
-            sys.exit()
-            
+            data_storage = reset_data_dict() # Reset the data dict            
         else:
             
             # Define the commands necessary to create table in database (raw SQL string)
@@ -146,7 +147,10 @@ if __name__ == '__main__':
                     species TEXT [] NOT NULL,
                     transitions TEXT [] NOT NULL,
                     vs REAL NOT NULL,
-                    n REAL NOT NULL,
+                    initial_n REAL NOT NULL,
+                    resolved_T REAL NOT NULL,
+                    resolved_n REAL NOT NULL,
+                    N DOUBLE PRECISION [] NOT NULL,
                     radex_flux DOUBLE PRECISION [] NOT NULL,
                     source_flux DOUBLE PRECISION [] NOT NULL,
                     source_flux_error DOUBLE PRECISION [] NOT NULL,
@@ -157,8 +161,8 @@ if __name__ == '__main__':
             
 
             # Create the tables
-            db.create_table(db_params=config_file, commands=commands)
-            db.create_table(db_params=bestfit_config_file, commands=bestfit_commands)
+            db.create_table(db_pool=db_pool, commands=commands)
+            db.create_table(db_pool=db_bestfit_pool, commands=bestfit_commands)
             
             # Append the data to the pre-existing entry in the dict-list
             observed_data[source_indx-1]['species'].append(species)
@@ -200,7 +204,7 @@ if __name__ == '__main__':
     backend.reset(nWalkers, nDim)
 
     #Set up MPI Pool
-    # pool = Pool()
+    pool = Pool(1)
 
     for obs in observed_data[:8]:
         if obs["species"] != ["SIO", "SO"]:
@@ -208,7 +212,7 @@ if __name__ == '__main__':
         else:
 
             sampler = mc.EnsembleSampler(nWalkers, nDim, ln_likelihood, 
-                args=(obs, bestfit_config_file, DIREC, RADEX_PATH), backend=backend)
+                args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), backend=backend, pool=pool)
             pos = []
             
             # Select the parameters
@@ -236,7 +240,7 @@ if __name__ == '__main__':
                         store = []
                         for k in range(0, nDim):
                             store.append(chain[i][j][k])
-                        db.insert_chain_data(db_params=config_file, table=obs["source"], chain=store)
+                        db.insert_chain_data(db_pool=db_pool, table=obs["source"], chain=store)
 
                 sampler.reset()
             
@@ -245,7 +249,7 @@ if __name__ == '__main__':
 
             # Read the database to retrieve the data
             chains = db.get_chains(
-                db_params=config_file, 
+                db_pool=db_pool, 
                 table=obs["source"], 
                 column_names=[
                     "vs",

@@ -17,6 +17,8 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
     trial_data = {
         'species': [],
         'transitions': [],
+        'resolved_T': 0,
+        'resolved_n': 0,
         'N': [],
         'flux': []
     }
@@ -49,6 +51,10 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
         shock_model["times"][1:]
     )
 
+    # Save those quantities to the dict lists
+    trial_data["resolved_T"] = T
+    trial_data["resolved_n"] = n
+
     for spec_indx, spec in enumerate(observed_data["species"]):    
         # Store the species
         trial_data['species'].append(spec)
@@ -62,6 +68,8 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
             [a*b for a, b in zip(shock_model["H_coldens"][1:], abund)],
             shock_model["times"][1:]
         )
+        print(N)
+        trial_data["N"].append(N)
 
         # Get the linewidth and relevant transition
         dv = observed_data["linewidths"][spec_indx]
@@ -77,11 +85,11 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
 
         print("Running radex")
         # Run radex
-        sp.run('radex < {0}/radex-input/{1}/vs{2}n{3:1.0E}.inp &> /dev/null'.format(
-            DIREC, spec, int(vs), int(initial_dens)), shell = True)  # &> pipes stdout and stderr
+        sp.run('radex < {0}/radex-input/{1}/vs{2}n{3:.6E}.inp &> /dev/null'.format(
+            DIREC, spec, vs, initial_dens), shell = True)  # &> pipes stdout and stderr
 
-        output_file_path = ('{0}/radex-output/{1}/vs{2}n{3:1.0E}.out'.format(
-            DIREC, spec, int(vs), int(initial_dens)))
+        output_file_path = ('{0}/radex-output/{1}/vs{2}n{3:.6E}.out'.format(
+            DIREC, spec, vs, initial_dens))
 
         # This block ensures that the output file exists before attempting to read it
         while not os.path.exists(output_file_path):
@@ -100,8 +108,7 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
 
         # Append the radex output data to the trial_data dictionary
         trial_data['flux'].append(radex_output["flux"])
-        trial_data['N'].append(N)
-
+    
     return trial_data
 
 
@@ -109,10 +116,10 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
 def write_radex_input(spec, ns, tkin, nh2, N, dv, vs, initial_dens, DIREC, RADEX_PATH, f_min, f_max):
     tbg=2.73
     # Open the text file that constitutes Radex's input file
-    infile = open('{0}/radex-input/{1}/vs{2}n{3:1.0E}.inp'.format(
-        DIREC, spec, int(vs), int(initial_dens)), 'w')
+    infile = open('{0}/radex-input/{1}/vs{2}n{3:.6E}.inp'.format(
+        DIREC, spec, vs, initial_dens), 'w')
     infile.write('{0}/data/{1}.dat\n'.format(RADEX_PATH,spec.lower()))  # Molecular data file
-    infile.write('{0}/radex-output/{1}/vs{2}n{3:1.0E}.out\n'.format(DIREC, spec, int(vs), int(initial_dens)))  # Output file
+    infile.write('{0}/radex-output/{1}/vs{2}n{3:.6E}.out\n'.format(DIREC, spec, vs, initial_dens))  # Output file
     infile.write('{0} {1}\n'.format(f_min, f_max)) # Frequency range (0 0 is unlimited)
     infile.write('{0}\n'.format(tkin)) # Kinetic temperature (i.e. temp of gas)
     infile.write('1\n') # Number of collisional partners
@@ -120,7 +127,7 @@ def write_radex_input(spec, ns, tkin, nh2, N, dv, vs, initial_dens, DIREC, RADEX
     infile.write('{0}\n'.format(nh2)) # Density of collision partner (i.e. dens of gas)
     infile.write('{0}\n'.format(tbg)) # Background temperature
     infile.write('{0}\n'.format(N)) # Column density of emitting species
-    infile.write('{0}\n'.format(dv/1e3)) # Line width
+    infile.write('{0}\n'.format(dv/1e3)) # Line width (converts back to km/s)
     infile.write('0 \n') # Indicates Radex should exit
 
     infile.close()
@@ -136,8 +143,8 @@ def read_radex_output(spec, transition, vs, initial_dens, DIREC):
         "flux": 0
     }
 
-    with open('{0}/radex-output/{1}/vs{2}n{3:1.0E}.out'.format(
-        DIREC, spec, int(vs), int(initial_dens)), 'r') as outfile:
+    with open('{0}/radex-output/{1}/vs{2}n{3:.6E}.out'.format(
+        DIREC, spec, vs, initial_dens), 'r') as outfile:
         lines = outfile.readlines()
 
         # Loop through the simulation information in the header of the 
@@ -177,7 +184,7 @@ def ln_prior(x):
 
 
 #likelihood function
-def ln_likelihood(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH):
+def ln_likelihood(x, observed_data, bestfit_db_connection, DIREC, RADEX_PATH):
 
     # Pack the parameters in to the y array for emcee
     # 0 is vs, 1 is n (initial density)
@@ -200,11 +207,12 @@ def ln_likelihood(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH):
             trial_data['flux'] = "Infinity"
 
         # Put the data in to a list for easier reference when storing
-        data = [trial_data['species'], trial_data['transitions'], x[0], 10**x[1], trial_data['flux'],
-                    observed_data['source_flux'], observed_data['source_flux_error'], chi]
+        data = [trial_data['species'], trial_data['transitions'], x[0], 10**x[1], 
+                    trial_data['resolved_T'], trial_data['resolved_n'], trial_data['N'], 
+                    trial_data['flux'], observed_data['source_flux'], observed_data['source_flux_error'], chi]
 
         # Save the best fit data for each species
-        db.insert_data(db_params=bestfit_config_file,
+        db.insert_data(db_pool=bestfit_db_connection,
                        table="{0}_bestfit_conditions".format(observed_data["source"]), data=data)
 
         return -0.5*chi
