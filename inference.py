@@ -338,7 +338,7 @@ def delete_radex_io(species, DIREC):
 def delete_uclchem_io(DIREC):
     for path in ["data", "start"]:
         filelist = glob.glob(os.path.join(
-            "{0}/UCLCHEM/output/path/".format(DIREC), "*.dat"))
+            "{0}/UCLCHEM/output/{1}/".format(DIREC, path), "*.dat"))
         for file_instance in filelist:
             os.remove(file_instance)
 
