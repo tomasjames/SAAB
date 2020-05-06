@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 
 import config as config
 import databasefunctions as db
+import inference
 import workerfunctions
 
 def param_select():
@@ -47,7 +48,7 @@ if __name__ == '__main__':
         'g_u': 15.0,
         'A_ul': 10**(-2.83461),
         'E_u': 58.34783,
-        'Z': [72.3246, 2*480.8102]
+        'Z': [72.3246, 962.5698]
     }
 
     so_data = {
@@ -74,10 +75,13 @@ if __name__ == '__main__':
 
     observed_data = workerfunctions.parse_data(data, db_pool, db_bestfit_pool)
     
-    '''
+    
     # Determine the estimated column densities based on the temperature (and a number of 
     # other assumptions)
-    physical_conditions = param_constraints(observed_data, sio_data, so_data)
+    physical_conditions = []
+    for obs in observed_data:
+        if obs["species"] == ["SIO", "SO"]:
+            physical_conditions.append(inference.param_constraints(obs, sio_data, so_data))
     '''
 
     # continueFlag = False
@@ -169,3 +173,4 @@ if __name__ == '__main__':
 
             fig_walks = c.plotter.plot_walks(filename=file_out_walk, display=False, plot_posterior=True)
     pool.close()
+    '''

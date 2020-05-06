@@ -68,7 +68,7 @@ def get_trial_data(params, observed_data, DIREC, RADEX_PATH):
             [a*b for a, b in zip(shock_model["H_coldens"][1:], abund)],
             shock_model["times"][1:]
         )
-        print(N)
+        
         trial_data["N"].append(N)
 
         # Get the linewidth and relevant transition
@@ -200,10 +200,13 @@ def ln_likelihood(x, observed_data, bestfit_db_connection, DIREC, RADEX_PATH):
     
         print("Computing chi-squared statistic")
         # Determine chi-squared statistic and write it to file
-        chi = chi_squared(
-            trial_data['flux'], observed_data['source_flux'],  observed_data['source_flux_error'])
+        chi = chi_squared(trial_data['flux'], 
+            observed_data['source_flux'],  
+            observed_data['source_flux_error']
+        )
 
         if trial_data['flux'] == np.inf:
+            print("Radex has potentially saturated")
             trial_data['flux'] = "Infinity"
 
         # Put the data in to a list for easier reference when storing
@@ -211,6 +214,7 @@ def ln_likelihood(x, observed_data, bestfit_db_connection, DIREC, RADEX_PATH):
                     trial_data['resolved_T'], trial_data['resolved_n'], trial_data['N'], 
                     trial_data['flux'], observed_data['source_flux'], observed_data['source_flux_error'], chi]
 
+        print("Inserting the chain data (and other quantities) in to the database")
         # Save the best fit data for each species
         db.insert_data(db_pool=bestfit_db_connection,
                        table="{0}_bestfit_conditions".format(observed_data["source"]), data=data)
@@ -243,41 +247,44 @@ def boltzmann_column_density(nu, int_intensity, A_ul, g_u, Z, E_u, T):
     '''
     Inputs:
         nu: frequency of the transition
-        int_intensity: intensity of the line (in K km/s)
+        int_intensity: intensity of the line (K km/s)
         g_u: (2J+1)
         Z: Partition function
         E_u: Upper state energy (in K)
-        T: Excitation temperature (in K)
+        T: Gas temperature (in K)
     Outputs:
         N
     '''
 
-    k = 1.38064852e-23 # m2 kg s-2 K-1
-    h = 6.62607015e-34 #m2 kg s-1
+    k = 1.38064852e-23 # kg m2 s-2 K-1
+    h = 6.62607015e-34 # kg m2 s-1
+
+    # Convert the intensity to K m/s for clarify
+    int_intensity = int_intensity*1e3
 
     # Upper state column density
-    N_u = ((8*np.pi*k*(nu**2)*int_intensity*(1e5))/(h*((3e10)**3)*A_ul))
+    N_u = ((8*np.pi*k*(nu**2)*int_intensity)/((h*(3e8)**3)*A_ul))*(1e-2)**2 # (1e-2)**2 converts to cm^-2
     return (N_u*Z)/(g_u*np.exp(-E_u/T))
 
 
 def param_constraints(observed_data, sio_data, so_data):
 
+    k = 1.38064852e-23  # kg m2 s-2 K-1
+
     local_conditions = reset_dict()
     physical_conditions = []
 
     for indx, spec in enumerate(observed_data['species']):
-        # Determine the FWHM (see https://www.cosmos.esa.int/documents/12133/1035800/fts-line-flux-conv.pdf/ or https://www.iram.fr/IRAMFR/ARC/documents/cycle7/ALMA_Cycle7_Technical_Handbook.pdf Page 132)
-        resolution = 0.0013 # effective resolution of ALMA band 7 (see https://home.strw.leidenuniv.nl/~alma/memo/allegro_memo3.pdf)
 
-        # Determine the flux conversion factor (again, from https://www.cosmos.esa.int/documents/12133/1035800/fts-line-flux-conv.pdf/)
-        Q = 1.22e6 * ((resolution)**-2)*(((observed_data['linewidths'][indx])**-2))
+        # Determine the beam solid angle 
+        d = 2.42e22 # Distance to Sgr A* in cm
+        theta_x, theta_y = 0.37*4.84814e-6, 0.31*4.84814e-6 # angular size of x and y dimensions of beam in radians
+        source_area = np.pi*(theta_x*d)*(theta_y*d) # small angle approx
+        solid_angle = source_area/(d**2)
 
-        # Convert flux from Jy km/s to to K km/s
-        int_intensity = Q*(observed_data['source_flux_dens_Jy'][indx])*(observed_data['linewidths'][indx])
-
-        # Convert the linewidth in km/s to frequency space
-        linewidth_wav = 3e8/(observed_data['transition_freqs'][indx]*(1e9))
-        nu = (observed_data['linewidths'][indx]*1e3)/(linewidth_wav) # dv in km/s so convert to m/s
+        radiant_flux = (observed_data['source_flux_dens_Jy'][indx]*1e-26)/solid_angle
+        flux_K = ((3e8**2)*radiant_flux)/(2*(observed_data['transition_freqs'][indx]**2)*k)
+        int_flux_K = flux_K*observed_data['linewidths'][indx]/1e3 # Integrated flux in K km/s
 
         if spec == "SIO":
             data = sio_data
@@ -292,10 +299,12 @@ def param_constraints(observed_data, sio_data, so_data):
             Z = data['Z'][indx]
             T = data['T'][indx]
 
-            N = boltzmann_column_density(nu, int_intensity, A_ul, g_u, Z, E_u, T)
+            N = boltzmann_column_density(
+                observed_data['transition_freqs'][indx], int_flux_K, A_ul, g_u, Z, E_u, T)
             
             local_conditions['species'] = spec
-            local_conditions['intensity'] = int_intensity
+            local_conditions['flux_K'] = flux_K
+            local_conditions['int_flux_K'] = int_flux_K
             local_conditions['N'] = N
             local_conditions['T'] = T
 
@@ -310,7 +319,8 @@ def param_constraints(observed_data, sio_data, so_data):
 def reset_dict():
     local_conditions = {
         'species': "",
-        'intensity': 0,
+        'flux_K': 0,
+        'int_flux_K': 0,
         'T': 0,
         'N': 0,
     }
