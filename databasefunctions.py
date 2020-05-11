@@ -4,6 +4,7 @@ from psycopg2 import pool
 from configparser import ConfigParser
 
 
+
 def dbpool(db_params):
     """
     A function that create a simple connection pool to a 
@@ -54,8 +55,34 @@ def create_table(db_pool, commands):
             # Release the connection object back to the pool
             db_pool.putconn(conn)
 
+
+def insert_radex_chain_data(db_pool, table, chain):
+    """ insert multiple vendors into the vendors table  """
+    sql = "INSERT INTO {0} (id, temp, dens, column_density_SIO, column_density_SO) VALUES (DEFAULT, {1}, {2}, {3}, {4});".format(
+        table, chain[0], chain[1], chain[2], chain[3])
+    conn = None
+    try:
+        # connect to the PostgreSQL server
+        # Use getconn() to Get Connection from connection pool
+        conn = db_pool.getconn()
+        # create a new cursor
+        cur = conn.cursor()
+        # execute the INSERT statement
+        cur.execute(sql, table)
+        # commit the changes to the database
+        conn.commit()
+        # close communication with the database
+        # cur.close()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+    finally:
+        if conn is not None:
+            conn.close()
+            # Release the connection object back to the pool
+            db_pool.putconn(conn)
+
 	
-def insert_chain_data(db_pool, table, chain):
+def insert_uclchem_chain_data(db_pool, table, chain):
     """ insert multiple vendors into the vendors table  """
     sql = "INSERT INTO {0} (id, vs, initial_dens) VALUES (DEFAULT, {1}, {2});".format(table, chain[0], chain[1])
     conn = None
@@ -82,8 +109,8 @@ def insert_chain_data(db_pool, table, chain):
 
 def insert_data(db_pool, table, data):
     """ insert multiple vendors into the vendors table  """
-    sql = """INSERT INTO {0} (id, species, transitions, vs, initial_n, resolved_T, resolved_n, N, radex_flux, source_flux, source_flux_error, chi_squared) VALUES ( DEFAULT, ARRAY [ '{1}', '{2}' ], ARRAY [ '{3}', '{4}' ], {5}, {6}, {7}, {8}, ARRAY [ {9}, {10} ], ARRAY [ {11}, {12} ], ARRAY [ {13}, {14} ], ARRAY [ {15}, {16} ], {17});""".format(
-        table, str(data[0][0]), str(data[0][1]), str(data[1][0]), str(data[1][1]), data[2], data[3], data[4], data[5], data[6][0], data[6][1], data[7][0], data[7][1], data[8][0], data[8][1], data[9][0], data[9][1], data[10])
+    sql = """INSERT INTO {0} (id, species, transitions, temp, dens, column_density, radex_flux, source_flux, source_flux_error, chi_squared) VALUES ( DEFAULT, ARRAY [ '{1}', '{2}' ], ARRAY [ '{3}', '{4}' ], {5}, {6}, ARRAY [ {7}, {8} ], ARRAY [ {9}, {10} ], ARRAY [ {11}, {12} ], ARRAY [ {13}, {14} ], {15} );""".format(
+        table, str(data[0][0]), str(data[0][1]), str(data[1][0]), str(data[1][1]), data[2], data[3], data[4][0], data[4][1], data[5][0], data[5][1], data[6][0], data[6][1], data[7][0], data[7][1], data[8])
     conn = None
     try:
         # connect to the PostgreSQL server
@@ -115,9 +142,11 @@ def get_chains(db_pool, table, column_names):
         conn = db_pool.getconn()
         cur = conn.cursor()
         cur.execute(
-            "SELECT {0}, {1} FROM {2};".format(
+            "SELECT {0}, {1}, {2}, {3} FROM {4};".format(
                 column_names[0], 
                 column_names[1],  
+                column_names[2],
+                column_names[3],
                 table
             )
         )

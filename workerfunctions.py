@@ -58,6 +58,26 @@ def parse_data(data, db_pool, db_bestfit_pool):
             float(entry[5][entry[5].find("±")+1:])/1e3)
         linewidths = (float(entry[7])*1e3)  # The linewidth (m/s)
 
+        if species == "SIO":
+            transition_freq = 303.92696000*1e9
+        elif species == "SO":
+            transition_freq = 304.07791400*1e9
+
+        # linewidth_f = inference.linewidth_conversion(linewidths, transition_freq)
+
+        # Convert flux from Jy to Rayleigh-Jeans estimate in K
+        rj_equiv = inference.rj_flux(
+            source_flux_dens_Jy,
+            transition_freq,
+            linewidths/1e3
+        )
+
+        rj_equiv_error = inference.rj_flux(
+            source_flux_dens_error_Jy,
+            transition_freq,
+            linewidths/1e3
+        )
+
         # Check to see whether this is the first data entry
         # Or whether the source already exists within the conditioned dictionary
         if indx == 0 or observed_data[len(observed_data)-1]['source'] != source_name:
@@ -66,101 +86,29 @@ def parse_data(data, db_pool, db_bestfit_pool):
             data_storage['sample_size'] = sample_size
             data_storage['species'].append(species)
             data_storage['transitions'].append(transitions)
-            data_storage['source_flux_dens_Jy'].append(
-                float(source_flux_dens_Jy))
-            data_storage['source_flux_dens_error_Jy'].append(
-                float(source_flux_dens_error_Jy))
-            data_storage['linewidths'].append(float(linewidths))
-
-            if species == "SIO":
-                transition_freq = 303.92696000*1e9
-            elif species == "SO":
-                transition_freq = 304.07791400*1e9
+            data_storage['source_flux_dens_Jy'].append(source_flux_dens_Jy)
+            data_storage['source_flux_dens_error_Jy'].append(source_flux_dens_error_Jy)
+            data_storage['linewidths'].append(linewidths)
             data_storage['transition_freqs'].append(transition_freq)
+            data_storage["source_rj_flux"].append(rj_equiv["rj_flux"])
+            data_storage["source_rj_flux_error"].append(rj_equiv_error["rj_flux"])
 
-            linewidth_f = inference.linewidth_conversion(linewidths, transition_freq)
-
-            data_storage["source_flux"].append(
-                (data_storage["source_flux_dens_Jy"][0]*1e-23)*linewidth_f
-            )
-            data_storage["source_flux_error"].append(
-                (data_storage["source_flux_dens_error_Jy"]
-                 [0]*1e-23)*linewidth_f
-            )
-
-            # Checks to see whether the tables exists; if so, delete it
-            if db.does_table_exist(db_pool=db_pool, table=source_name):
-                db.drop_table(db_pool=db_pool, table=source_name)
-            if db.does_table_exist(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(source_name)):
-                db.drop_table(db_pool=db_bestfit_pool,
-                              table="{0}_bestfit_conditions".format(source_name))
-
+            # Store the data
             observed_data.append(data_storage)
             data_storage = reset_data_dict()  # Reset the data dict
         else:
-
-            # Define the commands necessary to create table in database (raw SQL string)
-            commands = (
-                """
-                CREATE TABLE IF NOT EXISTS {0} (
-                    id SERIAL PRIMARY KEY,
-                    vs REAL NOT NULL,
-                    initial_dens REAL NOT NULL
-                )
-                """.format(source_name),
-            )
-
-            bestfit_commands = (
-                """
-                CREATE TABLE IF NOT EXISTS {0}_bestfit_conditions (
-                    id SERIAL PRIMARY KEY,
-                    species TEXT [] NOT NULL,
-                    transitions TEXT [] NOT NULL,
-                    vs REAL NOT NULL,
-                    initial_n REAL NOT NULL,
-                    resolved_T REAL NOT NULL,
-                    resolved_n REAL NOT NULL,
-                    N DOUBLE PRECISION [] NOT NULL,
-                    radex_flux DOUBLE PRECISION [] NOT NULL,
-                    source_flux DOUBLE PRECISION [] NOT NULL,
-                    source_flux_error DOUBLE PRECISION [] NOT NULL,
-                    chi_squared DOUBLE PRECISION NOT NULL
-                )
-                """.format(source_name),
-            )
-
-            # Create the tables
-            db.create_table(db_pool=db_pool, commands=commands)
-            db.create_table(db_pool=db_bestfit_pool, commands=bestfit_commands)
-
             # Append the data to the pre-existing entry in the dict-list
             observed_data[source_indx-1]['species'].append(species)
             observed_data[source_indx-1]['transitions'].append(transitions)
-            observed_data[source_indx -
-                          1]['source_flux_dens_Jy'].append(source_flux_dens_Jy)
-            observed_data[source_indx -
-                          1]['source_flux_dens_error_Jy'].append(source_flux_dens_error_Jy)
+            observed_data[source_indx-1]['source_flux_dens_Jy'].append(source_flux_dens_Jy)
+            observed_data[source_indx-1]['source_flux_dens_error_Jy'].append(source_flux_dens_error_Jy)
             observed_data[source_indx-1]['linewidths'].append(linewidths)
-
-            if species == "SIO":
-                transition_freq = 303.92696000*1e9
-            elif species == "SO":
-                transition_freq = 304.07791400*1e9
-            observed_data[source_indx -
-                          1]['transition_freqs'].append(transition_freq)
-
-            linewidth_f = inference.linewidth_conversion(linewidths, transition_freq)
-
-            observed_data[source_indx-1]["source_flux"].append(
-                (observed_data[source_indx-1]
-                 ["source_flux_dens_Jy"][0]*1e-23)*linewidth_f
-            )
-            observed_data[source_indx-1]["source_flux_error"].append(
-                (observed_data[source_indx-1]
-                 ["source_flux_dens_error_Jy"][0]*1e-23)*linewidth_f
-            )
+            observed_data[source_indx-1]["source_rj_flux"].append(rj_equiv["rj_flux"])
+            observed_data[source_indx-1]["source_rj_flux_error"].append(rj_equiv_error["rj_flux"])
+            observed_data[source_indx-1]['transition_freqs'].append(transition_freq)
 
     return observed_data
+
 
 def run_uclchem(vs, n, t_evol, DIREC):
 
@@ -297,7 +245,7 @@ def reset_data_dict():
         'source_flux_dens_Jy': [],  # Flux of species in Jy (original in mJy)
         #  Error for each flux in Jy (original in mJy)
         'source_flux_dens_error_Jy': [],
-        'source_flux': [],
-        'source_flux_error': []
+        'source_rj_flux': [], # The Rayleight Jeans flux in K
+        'source_rj_flux_error': [] # The error on the above flux in K
     }
     return data
