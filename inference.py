@@ -19,7 +19,7 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
     }
 
     # Unpack the parameters
-    T, n, N_sio, N_so = params[0], params[1], params[2], params[3]
+    T, n, N_sio, N_so, N_ocs = params[0], params[1], params[2], params[3], params[4]
 
     for spec_indx, spec in enumerate(observed_data["species"]):
         # Store the species
@@ -31,6 +31,8 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
             N = N_sio
         elif spec == "SO":
             N = N_so
+        elif spec == "OCS":
+            N = N_ocs
 
         dv = observed_data["linewidths"][spec_indx]
         transition = observed_data["transitions"][spec_indx]

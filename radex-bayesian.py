@@ -27,7 +27,7 @@ import workerfunctions
 def param_select():
     T = random.uniform(75, 1000)
     dens = random.uniform(3, 6)
-    N_sio = random.uniform(11, 15)
+    N_sio = random.uniform(10, 14)
     N_so = random.uniform(10, 14)
 
     return T, dens, N_sio, N_so
@@ -83,15 +83,23 @@ if __name__ == '__main__':
     # other assumptions) and create the necessary databases
     physical_conditions = []
     for obs in observed_data:
-        '''
         if obs["species"] == ["SIO", "SO"]:
-
+            '''
             # Checks to see whether the tables exists; if so, delete it
             if db.does_table_exist(db_pool=db_radex_pool, table=obs["source"]):
                 db.drop_table(db_pool=db_radex_pool, table=obs["source"])
             if db.does_table_exist(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"])):
                 db.drop_table(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"]))
+            '''
 
+            # Store the column density string
+            all_column_str = "" # Empty string to hold full string once complete
+            for spec_indx, spec in enumerate(obs["species"]):
+                column_str = "column_density_{0} REAL NOT NULL, ".format(spec)
+                if spec_indx == (len(obs["species"])-1): # Remove the comma 
+                    column_str = column_str[:-2:]
+                all_column_str = all_column_str + column_str
+            
             # Define the commands necessary to create table in database (raw SQL string)
             commands = (
                 """
@@ -99,12 +107,11 @@ if __name__ == '__main__':
                     id SERIAL PRIMARY KEY,
                     temp REAL NOT NULL,
                     dens REAL NOT NULL,
-                    column_density_SIO REAL NOT NULL,
-                    column_density_SO REAL NOT NULL
+                    {1}
                 );
-                """.format(obs["source"]),
+                """.format(obs["source"], all_column_str),
             )
-
+            
             bestfit_commands = (
                 """
                 CREATE TABLE IF NOT EXISTS {0}_bestfit_conditions (
@@ -128,29 +135,29 @@ if __name__ == '__main__':
 
             # Determine estimates of what the physical conditions should be
             physical_conditions.append(inference.param_constraints(obs, sio_data, so_data))
-        '''
     
     # continueFlag = False
     nWalkers = 40 # Number of random walkers to sample parameter space
     nDim = 4 # Number of dimensions within the parameters
     nSteps = int(1e3) # Number of steps per walker
     
+    '''
     # Set up the backend for temporary chain storage
     # Don't forget to clear it in case the file already exists
     filename = "{0}/chains/chains.h5".format(DIREC)
     backend = mc.backends.HDFBackend(filename)
     backend.reset(nWalkers, nDim)
-
+    '''
     #Set up MPI Pool
     pool = Pool(4)
 
-    for obs in observed_data[:8]:
-        if obs["species"] != ["SIO", "SO"]:
+    for obs in observed_data:
+        if len(obs["species"]) < 2 or obs["species"] != ["SIO", "SO"]:
             continue
         else:
             '''
             sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_radex, 
-                args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), backend=backend, pool=pool)
+                args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), pool=pool)
             pos = []
             
             # Select the parameters
