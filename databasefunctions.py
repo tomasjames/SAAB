@@ -58,8 +58,12 @@ def create_table(db_pool, commands):
 
 def insert_radex_chain_data(db_pool, table, chain):
     """ insert multiple vendors into the vendors table  """
-    sql = "INSERT INTO {0} (id, temp, dens, column_density_SIO, column_density_SO) VALUES (DEFAULT, {1}, {2}, {3}, {4});".format(
-        table, chain[0], chain[1], chain[2], chain[3])
+    try:
+        sql = "INSERT INTO {0} (id, temp, dens, column_density_SIO, column_density_SO, column_density_OCS) VALUES (DEFAULT, {1}, {2}, {3}, {4}, {5});".format(
+            table, chain[0], chain[1], chain[2], chain[3], chain[4])
+    except IndexError:
+        sql = "INSERT INTO {0} (id, temp, dens, column_density_SIO, column_density_SO) VALUES (DEFAULT, {1}, {2}, {3}, {4});".format(
+            table, chain[0], chain[1], chain[2], chain[3])
     conn = None
     try:
         # connect to the PostgreSQL server
@@ -109,8 +113,10 @@ def insert_uclchem_chain_data(db_pool, table, chain):
 
 def insert_data(db_pool, table, data):
     """ insert multiple vendors into the vendors table  """
-    sql = """INSERT INTO {0} (id, species, transitions, temp, dens, column_density, radex_flux, source_flux, source_flux_error, chi_squared) VALUES ( DEFAULT, ARRAY [ '{1}', '{2}' ], ARRAY [ '{3}', '{4}' ], {5}, {6}, ARRAY [ {7}, {8} ], ARRAY [ {9}, {10} ], ARRAY [ {11}, {12} ], ARRAY [ {13}, {14} ], {15} );""".format(
-        table, str(data[0][0]), str(data[0][1]), str(data[1][0]), str(data[1][1]), data[2], data[3], data[4][0], data[4][1], data[5][0], data[5][1], data[6][0], data[6][1], data[7][0], data[7][1], data[8])
+    # sql = """INSERT INTO {0} (id, species, transitions, temp, dens, column_density, radex_flux, source_flux, source_flux_error, chi_squared) VALUES ( DEFAULT, ARRAY [ '{1}', '{2}' ], ARRAY [ '{3}', '{4}' ], {5}, {6}, ARRAY [ {7}, {8} ], ARRAY [ {9}, {10} ], ARRAY [ {11}, {12} ], ARRAY [ {13}, {14} ], {15} );""".format(
+    # table, str(data[0][0]), str(data[0][1]), str(data[1][0]), str(data[1][1]), data[2], data[3], data[4][0], data[4][1], data[5][0], data[5][1], data[6][0], data[6][1], data[7][0], data[7][1], data[8])
+    sql = """INSERT INTO {0} (id, species, transitions, temp, dens, column_density, radex_flux, source_flux, source_flux_error, chi_squared) VALUES ( DEFAULT, ARRAY {1}, ARRAY {2}, {3}, {4}, ARRAY {5}, ARRAY {6}, ARRAY {7}, ARRAY {8}, {9} );""".format(
+        table, data["species"], data["transitions"], data["temp"], data["dens"], data["column_density"], data["rj_flux"], data["source_rj_flux"], data["source_rj_flux_error"], data["chi"])
     conn = None
     try:
         # connect to the PostgreSQL server

@@ -39,6 +39,7 @@ with open(datafile, newline='') as f:
 # Read in the correct config file from the database
 config_file = config.config_file(
     db_init_filename='database.ini', section='radex_fit_results')
+db_pool = db.dbpool(config_file)
 
 # Read the image data from Farhad
 fits_table_filename = 'data/images/20cm.fits'
@@ -99,13 +100,13 @@ for indx, entry in enumerate(data[1:]):  # data[0] is the header row
 
     # Read in the data for the given source
     best_fit_data = db.get_bestfit(
-        db_params=config_file,
+        db_pool=db_pool,
         table=entry[0],
         column_names=[
-            "t",
+            "temp",
             "dens",
-            "n_sio",
-            "n_so"
+            "column_density_sio",
+            "column_density_so"
         ]
     )
     best_fit_data = np.array(best_fit_data) # Converts to array 
@@ -146,17 +147,17 @@ axins.add_collection(p_inset1)
 axins1.add_collection(p_inset2)
 
 # Sets the ranges on the collections to their correct min and max values
-p.set_array(np.array(mean_N_SO))
-p.set_clim([np.ma.min(mean_N_SO), np.ma.max(mean_N_SO)])
+p.set_array(np.array(mean_T))
+p.set_clim([np.ma.min(mean_T), np.ma.max(mean_T)])
 
-p_inset1.set_array(np.array(mean_N_SO))
-p_inset1.set_clim([np.ma.min(mean_N_SO), np.ma.max(mean_N_SO)])
+p_inset1.set_array(np.array(mean_T))
+p_inset1.set_clim([np.ma.min(mean_T), np.ma.max(mean_T)])
 
-p_inset2.set_array(np.array(mean_N_SO))
-p_inset2.set_clim([np.ma.min(mean_N_SO), np.ma.max(mean_N_SO)])
+p_inset2.set_array(np.array(mean_T))
+p_inset2.set_clim([np.ma.min(mean_T), np.ma.max(mean_T)])
 
 # Adds the colour bar
-plt.colorbar(p, ax=ax, label="N$_{SO, mean}$ [cm$^{-2}$]")
+plt.colorbar(p, ax=ax, label="T$_{mean}$ [K]")
 
 # Change the grid on the inset
 axins.grid(alpha=0.1, color='white')
@@ -177,4 +178,4 @@ plt.xticks(visible=False)
 mark_inset(ax, axins1, loc1=4, loc2=2, fc="none", ec="0.5")
 
 # plt.tight_layout()
-fig.savefig('data/images/20cm.pdf')
+fig.savefig('data/images/20cm_T_mean.pdf')

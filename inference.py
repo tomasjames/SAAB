@@ -19,43 +19,56 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
     }
 
     # Unpack the parameters
-    T, n, N_sio, N_so, N_ocs = params[0], params[1], params[2], params[3], params[4]
+    try:
+        T, n, N_sio, N_so, N_ocs = params[0], params[1], params[2], params[3], params[4]
+    except IndexError:
+        T, n, N_sio, N_so = params[0], params[1], params[2], params[3]
 
     for spec_indx, spec in enumerate(observed_data["species"]):
-        # Store the species
-        trial_data['species'].append(spec)
-        trial_data['transitions'].append(observed_data["transitions"][spec_indx])
+        # Catch any molecular transitions that we're not interested in
+        if spec == "SIO" or spec == "SO" or spec == "OCS":
+            # Store the species
+            trial_data['species'].append(spec)
+            trial_data['transitions'].append(observed_data["transitions"][spec_indx])
 
-        # Set the line width and column density
-        if spec == "SIO":
-            N = N_sio
-        elif spec == "SO":
-            N = N_so
-        elif spec == "OCS":
-            N = N_ocs
+            # Set the line width and column density
+            if spec == "SIO":
+                N = N_sio
+            elif spec == "SO":
+                N = N_so
+            elif spec == "OCS":
+                N = N_ocs
 
-        dv = observed_data["linewidths"][spec_indx]
-        transition = observed_data["transitions"][spec_indx]
+            dv = abs(observed_data["linewidths"][spec_indx]) # Some linewidths are -ve
+            transition = observed_data["transitions"][spec_indx]
 
-        # Write the radex input file
-        input_path = '{0}/radex-input/{1}/n{2:.6E}T{3}N{4:.6E}.inp'.format(DIREC, spec, n, T, N)
-        output_path = '{0}/radex-output/{1}/n{2:6E}T{3}N{4:.6E}.out'.format(DIREC, spec, n, T, N)
-        write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=290, f_max=360)
+            # Write the radex input file
+            input_path = '{0}/radex-input/{1}/n{2:E}T{3}N{4:E}.inp'.format(DIREC, spec, n, T, N)
+            output_path = '{0}/radex-output/{1}/n{2:E}T{3}N{4:E}.out'.format(DIREC, spec, n, T, N)
+            write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=290, f_max=360)
 
-        #Run radex
-        shell_output = sp.run(
-            'radex < {0} &> /dev/null'.format(input_path), 
-            shell=True, 
-            capture_output=True, 
-            check=True
-        )  # &> pipes stdout and stderr
+            #Run radex
+            shell_output = sp.run(
+                'radex < {0}'.format(input_path), 
+                shell=True, 
+                capture_output=True, 
+                check=False
+            )  # &> pipes stdout and stderr
 
-        # Read the radex output
-        radex_output = read_radex_output(spec, transition, output_path)
+            # This block ensures that the output file exists before attempting to read it
+            while not os.path.exists(output_path):
+                time.sleep(1)
+                print("Waiting for {0}".format(output_path))
+            if os.path.isfile(output_path):
+                # Read the radex output
+                radex_output = read_radex_output(spec, transition, output_path)
+            else:
+                raise ValueError("%s isn't a file!" % output_path)
 
-        # Determine the flux density
-        trial_data['rj_flux'].append(radex_output["rj_flux"])
-
+            # Determine the flux density
+            trial_data['rj_flux'].append(radex_output["rj_flux"])
+        else:
+            continue
     return trial_data
 
 
@@ -210,7 +223,11 @@ def read_radex_output(spec, transition, output_path):
             if (transition == str(words[0]+words[1]+words[2])):  
                 radex_output["E_up"] = float(words[3]) # Extract the energy of the transition
                 radex_output["wav"] = float(words[5]) # Extract the wavelength of the transition
-                radex_output["rj_flux"] = float(words[-5]) # Extract the Rayleigh-Jeans flux of the transition in K
+                try: 
+                    radex_output["rj_flux"] = float(words[-5]) # Extract the Rayleigh-Jeans flux of the transition in K
+                except ValueError:
+                    print("Potential Radex saturation")
+                    radex_output["rj_flux"] = np.inf
     
     return radex_output
 
@@ -218,17 +235,21 @@ def read_radex_output(spec, transition, output_path):
 # prior probability function
 def ln_radex_prior(x):
     #temp
-    if x[0] < 75 or x[0] > 1000:
+    if x[0] < 100 or x[0] > 2500:
         return False
     #dens (log space)
-    elif x[1] < 3 or x[1] > 6:
+    elif x[1] < 2 or x[1] > 8:
         return False
     #N_sio (log space)
-    elif x[2] < 11 or x[2] > 15:
+    elif x[2] < 8 or x[2] > 16:
         return False
     #N_so (log space)
-    elif x[3] < 10 or x[3] > 14:
+    elif x[3] < 8 or x[3] > 16:
         return False
+    if len(x) == 5:
+        #N_ocs (log space)
+        if x[4] < 8 or x[4] > 16:
+            return False
     else:
         return True
 
@@ -245,11 +266,14 @@ def ln_uclchem_prior(x):
         return True
 
 
-def ln_likelihood_radex(x, observed_data, bestfit_db_connection, DIREC, RADEX_PATH):
+def ln_likelihood_radex(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH):
 
     # Pack the parameters in to the y array for emcee
-    # 0 is T, 1 is n and 2 is N_sio and 3 in N_so
-    y = [x[0], 10**x[1], 10**x[2], 10**x[3]]
+    # 0 is T, 1 is n and 2 is N_sio and 3 in N_so and 4 is N_ocs
+    try:
+        y = [x[0], 10**x[1], 10**x[2], 10**x[3], 10**x[4]]
+    except IndexError:
+        y = [x[0], 10**x[1], 10**x[2], 10**x[3]]
 
     # Checks to see whether the randomly selected values of x are within
     # the desired range using ln_prior
@@ -270,23 +294,28 @@ def ln_likelihood_radex(x, observed_data, bestfit_db_connection, DIREC, RADEX_PA
             print("Radex has potentially saturated")
             trial_data['rj_flux'] = "Infinity"
 
-        # Put the data in to a list for easier reference when storing
-        data = [
-            trial_data['species'], 
-            trial_data['transitions'], 
-            x[0], 
-            10**x[1], 
-            [10**x[2], 10**x[3]],
-            trial_data['rj_flux'], 
-            observed_data['source_rj_flux'], 
-            observed_data['source_rj_flux_error'], 
-            chi
-        ]
+        try:
+            column_densities = [10**x[2], 10**x[3], 10**x[4]]
+        except IndexError:
+            column_densities = [10**x[2], 10**x[3]]
+
+        # Put the data in to a dictionary for easier reference when storing
+        data = {
+            "species": trial_data['species'], 
+            "transitions": trial_data['transitions'], 
+            "temp": x[0], 
+            "dens": 10**x[1], 
+            "column_density": column_densities,
+            "rj_flux": trial_data['rj_flux'], 
+            "source_rj_flux": observed_data['source_rj_flux'], 
+            "source_rj_flux_error": observed_data['source_rj_flux_error'],
+            "chi": chi
+        }
 
         print("Inserting the chain data (and other quantities) in to the database")
         # Save the best fit data for each species
         db.insert_data(
-            db_pool=bestfit_db_connection,
+            db_pool=db.dbpool(bestfit_config_file),
             table="{0}_bestfit_conditions".format(observed_data["source"]), 
             data=data
         )

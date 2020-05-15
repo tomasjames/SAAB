@@ -5,7 +5,7 @@ radex-input/*
 radex-output/*
 radex-plots/*
 radex.log
-UCLCHEM/*
+/UCLCHEM
 chains*
 .DS_Store
 *.pyc
