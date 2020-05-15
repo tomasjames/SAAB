@@ -56,12 +56,18 @@ def parse_data(data, db_pool, db_bestfit_pool):
         # The observed flux error (Jy)
         source_flux_dens_error_Jy = (
             float(entry[5][entry[5].find("±")+1:])/1e3)
-        linewidths = (float(entry[7])*1e3)  # The linewidth (m/s)
+        linewidths = abs(float(entry[7])*1e3)  # The linewidth (m/s)
 
         if species == "SIO":
             transition_freq = 303.92696000*1e9
         elif species == "SO":
             transition_freq = 304.07791400*1e9
+        elif species == "OCS":
+            transition_freq = 303.99326100*1e9
+        elif species == "H2CS":
+            transition_freq = 304.30774200*1e9
+        else:
+            transition_freq = np.nan
 
         # linewidth_f = inference.linewidth_conversion(linewidths, transition_freq)
 
@@ -88,7 +94,7 @@ def parse_data(data, db_pool, db_bestfit_pool):
             data_storage['transitions'].append(transitions)
             data_storage['source_flux_dens_Jy'].append(source_flux_dens_Jy)
             data_storage['source_flux_dens_error_Jy'].append(source_flux_dens_error_Jy)
-            data_storage['linewidths'].append(linewidths)
+            data_storage['linewidths'].append(abs(linewidths)) # abs catches any -ve linewidths
             data_storage['transition_freqs'].append(transition_freq)
             data_storage["source_rj_flux"].append(rj_equiv["rj_flux"])
             data_storage["source_rj_flux_error"].append(rj_equiv_error["rj_flux"])
