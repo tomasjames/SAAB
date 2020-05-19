@@ -49,7 +49,7 @@ DIREC = os.getcwd()
 # RADEX_PATH = "{0}/../Radex".format(DIREC)
 RADEX_PATH = "/Users/tjames/Documents/Codes/Radex"
 
-print_results = False
+print_results = True
 
 if __name__ == '__main__':
 
@@ -73,6 +73,9 @@ if __name__ == '__main__':
         'Z': [197.515, 2*850.217] # From Splatalogue (https://www.cv.nrao.edu/php/splat/species_metadata_displayer.php?species_id=20)
     }
 
+    # Declare the species that we're interested in
+    relevant_species = ["SIO", "SO", "OCS"]
+
     # Declare the database connections
     radex_config_file = config.config_file(db_init_filename='database.ini', section='radex_fit_results')
     bestfit_config_file = config.config_file(db_init_filename='database.ini', section='bestfit_conditions')
@@ -89,13 +92,21 @@ if __name__ == '__main__':
 
     # Parse the data to a dict list
     observed_data = workerfunctions.parse_data(data, db_radex_pool, db_bestfit_pool)
+
+    # Filter the observed data to contain only those species that we can use
+    # (normally limited by those with Radex data)
+    filtered_data = workerfunctions.filter_data(
+        observed_data, relevant_species)
     
     # Determine the estimated column densities based on the temperature (and a number of 
     # other assumptions) and create the necessary databases
     physical_conditions = []
     for obs in observed_data[:8]:
-        if "SIO" in obs["species"] and "SO" in obs["species"] and "OCS" in obs["species"]:
-            '''
+        
+        if (len(obs["species"]) >= 2 and "SIO" in obs["species"]) or \
+                (len(obs["species"]) >= 2 and "SO" in obs["species"]) or \
+                    (len(obs["species"]) >= 2 and "OCS" in obs["species"]):
+            
             # Checks to see whether the tables exists; if so, delete it
             if db.does_table_exist(db_pool=db_radex_pool, table=obs["source"]):
                 db.drop_table(db_pool=db_radex_pool, table=obs["source"])
@@ -146,28 +157,29 @@ if __name__ == '__main__':
             
             # Determine estimates of what the physical conditions should be
             physical_conditions.append(inference.param_constraints(obs, sio_data, so_data))
-            '''
-    # continueFlag = False
+    
     nWalkers = 40 # Number of random walkers to sample parameter space
-    # nDim = 5 # Number of dimensions within the parameters
-    nSteps = int(1e3) # Number of steps per walker
+    nSteps = int(1e2) # Number of steps per walker
     
     #Set up MPI Pool
     pool = Pool(4)
 
-    for obs in observed_data[6:7]:
-        if (len(obs["species"]) < 2 or \
-             "SIO" not in obs["species"] or 
-                "SO" not in obs["species"] or 
-                    "OCS" not in obs["species"]):
-            continue
-        else:
+    # Loop through the sources 
+    for obs in observed_data[:8]:
+        if (len(obs["species"]) >= 2 and "SIO" in obs["species"]) or \
+             (len(obs["species"]) >= 2 and "SO" in obs["species"]) or \
+                (len(obs["species"]) >= 2 and "OCS" in obs["species"]):
+
+            print(obs["source"])
+            print(obs["species"])
             # Empty lists for parameters and their keys
             pos, pos_keys = [], []
 
-            # Empty flags for whether molecules are present
+            # Empty flags to signify whether molecules are present
+            # Assune False by default
             sio_flag, so_flag, ocs_flag = False, False, False
 
+            # Determine which molecules are present and alter flags
             if "SIO" in obs["species"]:
                 sio_flag = True
             if "SO" in obs["species"]:
@@ -200,17 +212,17 @@ if __name__ == '__main__':
                 pos.append(pos_list)
                 pos_keys.append(pos_keys_list)
 
+            # Determine the number of dimensions
             nDim = len(pos_keys[0])
-            print(nDim)
+            print("nDim={0}".format(nDim))
 
+            # Run the sampler
             sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_radex, 
                 args=(obs, bestfit_config_file, DIREC, RADEX_PATH), pool=pool)
 
-            print(obs["source"])
-
             # Split the chain in to 100 chunks, each 1% of the total size and write out
             nBreak=int(nSteps/100)
-            for counter in range(0, nBreak):
+            for counter in range(0, nSteps):
                 sampler.reset() # Reset the chain
                 print("Running mcmc")
                 pos, prob, state = sampler.run_mcmc(pos, nBreak, progress=False) #start from where we left off previously 
@@ -218,7 +230,6 @@ if __name__ == '__main__':
                 for species in obs["species"]:
                     # Delete the Radex and UCLCHEM input and output files
                     inference.delete_radex_io(species, DIREC)
-                    # inference.delete_uclchem_io(DIREC)
                 
                 #chain is organized as chain[walker, step, parameter(s)]
                 chain = np.array(sampler.chain[:, :, :])
@@ -230,25 +241,41 @@ if __name__ == '__main__':
                         db.insert_radex_chain_data(db_pool=db_radex_pool, table=obs["source"], chain=store)
 
                 sampler.reset()
-            
+            '''
             if print_results:
                 print("Moving to plotting routine")
                 print("Getting data from database")
 
                 # Read the database to retrieve the data
-                chains = db.get_chains(
-                    db_pool=db_radex_pool, 
-                    table=obs["source"], 
-                    column_names=[
-                        "temp",
-                        "dens",
-                        "column_density_SIO",
-                        "column_density_SO"
-                    ]
-                )
+                try:
+                    chains = db.get_chains(
+                        db_pool=db_radex_pool, 
+                        table=obs["source"], 
+                        column_names=[
+                            "temp",
+                            "dens",
+                            "column_density_SIO",
+                            "column_density_SO",
+                            "column_density_OCS"
+                        ]
+                    )
+                except:
+                    chains = db.get_chains(
+                        db_pool=db_radex_pool,
+                        table=obs["source"],
+                        column_names=[
+                            "temp",
+                            "dens",
+                            "column_density_SIO",
+                            "column_density_SO"
+                        ]
+                    )
 
                 # Determine the length of the first chain (assuming all chains are the same length)
-                chain_length = len(chains)
+                try:
+                    chain_length = len(chains)
+                except TypeError:
+                    continue
 
                 # Throw away the first 20% or so of samples so as to avoid considering initial burn-in period
                 chain = np.array(chains[int(chain_length*0.2):])
@@ -258,6 +285,7 @@ if __name__ == '__main__':
                 param2 = "log(n$_{H}$) / cm$^{-3}$"
                 param3 = "log(N$_{SiO}$) / cm$^{-2}$"
                 param4 = "log(N$_{SO}$) / cm$^{-2}$"
+                param5 = "log(N$_{OCS}$) / cm$^{-2}$"
 
                 #Chain consumer plots posterior distributions and calculates
                 #maximum likelihood statistics as well as Geweke test
@@ -271,5 +299,6 @@ if __name__ == '__main__':
                 # summary = c.analysis.get_summary()
 
                 #fig_walks = c.plotter.plot_walks(filename=file_out_walk, display=False, plot_posterior=True)
+                fig.close()
+            '''
     pool.close()
-    

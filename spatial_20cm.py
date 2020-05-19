@@ -63,7 +63,7 @@ fig, ax = plt.subplots(1, figsize=(9, 10))
 
 # Plot the data
 plot = ax.imshow(image_data, interpolation="nearest", origin="lower",
-                 cmap="Spectral", norm=Normalize(vmin=0.0, vmax=0.008))
+                 cmap="bone", norm=Normalize(vmin=0.0, vmax=0.005))
 cbaxes = fig.add_axes([0.15, 0.08, 0.6, 0.02])
 fig.colorbar(plot, orientation="horizontal", cax=cbaxes, extend='max', label="Flux density [Jy/beam]")
 ax.set_xlim([0, 3500])
@@ -77,14 +77,14 @@ g = ax.grid(alpha=0.25, color='white')
 # Zoom in by a factor of 4.0 and place on the upper left
 axins = zoomed_inset_axes(ax, 8.0, loc=2, bbox_to_anchor=(35, 650), borderpad=1)
 axins.imshow(image_data, interpolation="nearest", origin="lower", 
-            cmap="Spectral", norm=Normalize(vmin=0.0, vmax=0.008))
+            cmap="bone", norm=Normalize(vmin=0.0, vmax=0.005))
 plt.yticks(visible=False)
 plt.xticks(visible=False)
 
 # Zoom in by a factor of 4.0 and place on the lower right
 axins1 = zoomed_inset_axes(ax, 6.0, loc=3, bbox_to_anchor=(35, 80), borderpad=1)
 axins1.imshow(image_data, interpolation="nearest", origin="lower",
-            cmap="Spectral", norm=Normalize(vmin=0.0, vmax=0.008))
+            cmap="bone", norm=Normalize(vmin=0.0, vmax=0.005))
 plt.yticks(visible=False)
 plt.xticks(visible=False)
 
@@ -137,9 +137,9 @@ for indx, entry in enumerate(data[1:]):  # data[0] is the header row
 ############################## Overlay best fit data ############################
 
 # Define the collections to house all of the patches
-p = PatchCollection(beams, cmap="magma")
-p_inset1 = PatchCollection(beams_inset1, cmap="magma")
-p_inset2 = PatchCollection(beams_inset2, cmap="magma")
+p = PatchCollection(beams, cmap="rainbow")
+p_inset1 = PatchCollection(beams_inset1, cmap="rainbow")
+p_inset2 = PatchCollection(beams_inset2, cmap="rainbow")
 
 # Plot these collections on the correct axis
 ax.add_collection(p)

@@ -38,6 +38,7 @@ with open(datafile, newline='') as f:
 # Read in the correct config file from the database
 config_file = config.config_file(
     db_init_filename='database.ini', section='radex_fit_results')
+db_pool = db.dbpool(config_file)
 
 # Read the image data from Farhad
 fits_table_filename = 'data/images/HCN.fits'
@@ -60,7 +61,7 @@ fig, ax = plt.subplots(1, figsize=(9, 12))
 
 # Plot the data
 plot = ax.imshow(image_data, interpolation="nearest",
-                 origin="lower", cmap="Spectral")
+                 origin="lower", cmap="BuPu")
 cbaxes = fig.add_axes([0.2, 0.04, 0.6, 0.02])
 fig.colorbar(plot, orientation="horizontal", cax=cbaxes, label="Flux density [Jy/beam km/s]")
 ax.set_xlim([1200, 2800])
@@ -73,13 +74,13 @@ g = ax.grid(alpha=0.25, color='white')
 
 # Zoom in by a factor of 4.0 and place on the upper left
 axins = zoomed_inset_axes(ax, 6.0, loc=2, bbox_to_anchor=(40, 800), borderpad=1)
-axins.imshow(image_data, interpolation="nearest", origin="lower", cmap="Spectral")
+axins.imshow(image_data, interpolation="nearest", origin="lower", cmap="BuPu")
 plt.yticks(visible=False)
 plt.xticks(visible=False)
 
 # Zoom in by a factor of 4.0 and place on the lower right
 axins1 = zoomed_inset_axes(ax, 4.0, loc=3, bbox_to_anchor=(40, 50), borderpad=1)
-axins1.imshow(image_data, interpolation="nearest", origin="lower", cmap="Spectral")
+axins1.imshow(image_data, interpolation="nearest", origin="lower", cmap="BuPu")
 plt.yticks(visible=False)
 plt.xticks(visible=False)
 
@@ -95,13 +96,13 @@ for indx, entry in enumerate(data[1:]):  # data[0] is the header row
 
     # Read in the data for the given source
     best_fit_data = db.get_bestfit(
-        db_params=config_file,
+        db_pool=db_pool,
         table=entry[0],
         column_names=[
-            "t",
+            "temp",
             "dens",
-            "n_sio",
-            "n_so"
+            "column_density_sio",
+            "column_density_so"
         ]
     )
     best_fit_data = np.array(best_fit_data) # Converts to array 
@@ -132,9 +133,9 @@ for indx, entry in enumerate(data[1:]):  # data[0] is the header row
 ############################## Overlay best fit data ############################
 
 # Define the collections to house all of the patches
-p = PatchCollection(beams, cmap="magma")
-p_inset1 = PatchCollection(beams_inset1, cmap="magma")
-p_inset2 = PatchCollection(beams_inset2, cmap="magma")
+p = PatchCollection(beams, cmap="rainbow")
+p_inset1 = PatchCollection(beams_inset1, cmap="rainbow")
+p_inset2 = PatchCollection(beams_inset2, cmap="rainbow")
 
 # Plot these collections on the correct axis
 ax.add_collection(p)
@@ -142,17 +143,17 @@ axins.add_collection(p_inset1)
 axins1.add_collection(p_inset2)
 
 # Sets the ranges on the collections to their correct min and max values
-p.set_array(np.array(mean_T))
-p.set_clim([np.ma.min(mean_T), np.ma.max(mean_T)])
+p.set_array(np.array(mean_N_SO))
+p.set_clim([np.ma.min(mean_N_SO), np.ma.max(mean_N_SO)])
 
-p_inset1.set_array(np.array(mean_T))
-p_inset1.set_clim([np.ma.min(mean_T), np.ma.max(mean_T)])
+p_inset1.set_array(np.array(mean_N_SO))
+p_inset1.set_clim([np.ma.min(mean_N_SO), np.ma.max(mean_N_SO)])
 
-p_inset2.set_array(np.array(mean_T))
-p_inset2.set_clim([np.ma.min(mean_T), np.ma.max(mean_T)])
+p_inset2.set_array(np.array(mean_N_SO))
+p_inset2.set_clim([np.ma.min(mean_N_SO), np.ma.max(mean_N_SO)])
 
 # Adds the colour bar
-plt.colorbar(p, ax=ax, label="T$_{mean}$ [K]")
+plt.colorbar(p, ax=ax, label="N$_{SO, mean}$ [cm$^{-2}$]")
 
 # Change the grid on the inset
 axins.grid(alpha=0.1, color='white')
@@ -173,4 +174,4 @@ plt.xticks(visible=False)
 mark_inset(ax, axins1, loc1=4, loc2=2, fc="none", ec="0.5")
 
 # plt.tight_layout()
-fig.savefig('data/images/HCN.pdf')
+fig.savefig('data/images/HCN_N_SO_mean.pdf')

@@ -26,8 +26,8 @@ def parse_data(data, db_pool, db_bestfit_pool):
             to be parsed 
         db_pool [object] -- a pool object to store data; this
             function sets up the necessary tables
-        db_pool [object] -- a pool object to store data; this
-            function sets up the necessary tables
+        db_bestfit_pool [object] -- a pool object to store bestfit 
+            data; this function sets up the necessary tables
 
     Returns:
         observed_data [list] -- a dict list containing the observed
@@ -47,15 +47,10 @@ def parse_data(data, db_pool, db_bestfit_pool):
     for indx, entry in enumerate(data[1:]):  # data[0] is the header row
         source_name = entry[0]  # The source name
         sample_size = entry[3]  #  The sample size (in beams)
-        # The molecule of interest
-        species = entry[4][0:entry[4].find(" ")].upper()
-        transitions = entry[4][entry[4].find(" ")+1:].replace("–", "--").replace(
-            "(", "_").replace(")", "")  #  The transition of the molecule
-        #  The observed flux density (Jy)
-        source_flux_dens_Jy = (float(entry[5][0:entry[5].find("±")])/1e3)
-        # The observed flux error (Jy)
-        source_flux_dens_error_Jy = (
-            float(entry[5][entry[5].find("±")+1:])/1e3)
+        species = entry[4][0:entry[4].find(" ")].upper() # The molecule of interest
+        transitions = entry[4][entry[4].find(" ")+1:].replace("–", "--").replace("(", "_").replace(")", "")  # The transition of the molecule
+        source_flux_dens_Jy = (float(entry[5][0:entry[5].find("±")])/1e3) #  The observed flux density (Jy)
+        source_flux_dens_error_Jy = (float(entry[5][entry[5].find("±")+1:])/1e3)  # The observed flux error (Jy)
         linewidths = abs(float(entry[7])*1e3)  # The linewidth (m/s)
 
         if species == "SIO":
@@ -68,8 +63,6 @@ def parse_data(data, db_pool, db_bestfit_pool):
             transition_freq = 304.30774200*1e9
         else:
             transition_freq = np.nan
-
-        # linewidth_f = inference.linewidth_conversion(linewidths, transition_freq)
 
         # Convert flux from Jy to Rayleigh-Jeans estimate in K
         rj_equiv = inference.rj_flux(
@@ -114,6 +107,39 @@ def parse_data(data, db_pool, db_bestfit_pool):
             observed_data[source_indx-1]['transition_freqs'].append(transition_freq)
 
     return observed_data
+
+
+def filter_data(data, species):
+    """
+    A function that filters a given dictionary (data) to 
+    only contain species including within the species
+    list (species).
+
+    Arguments:
+        data {dict} -- A dictionary containing data
+                        from parse_data
+        species {list} -- A list containing any and all
+                            species of interest
+
+    Returns:
+        {dict} -- A dictionary of the same format as that 
+                    supplied but with irrelevant species removed
+    """    
+    filtered_data = [] # List to hold the resulting data
+    for source in data: # Loop through the data
+        diffs = list(set(source["species"]) - set(species)) # Find the differences between species in data and species of interest
+        for unique in diffs: # Remove those unique elements found above
+            indx = source["species"].index(unique)
+            source["species"].pop(indx)
+            source["transitions"].pop(indx)
+            source["transition_freqs"].pop(indx)
+            source["source_flux_dens_Jy"].pop(indx)
+            source["source_flux_dens_error_Jy"].pop(indx)
+            source["linewidths"].pop(indx)
+            source["source_rj_flux"].pop(indx)
+            source["source_rj_flux_error"].pop(indx)
+        filtered_data.append(source)
+    return filtered_data
 
 
 def run_uclchem(vs, n, t_evol, DIREC):

@@ -465,7 +465,6 @@ def rj_flux(source_flux_dens_Jy, transition_freq, linewidth):
 
     # Constants
     k = 1.38064852e-23  # kg m2 s-2 K-1
-    h = 6.62607015e-34  # kg m2 s-1
 
     # Determine the beam solid angle
     d = 2.42e22  #  Distance to Sgr A* in cm
