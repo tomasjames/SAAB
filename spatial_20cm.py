@@ -57,9 +57,9 @@ pixel_width = sgrA_dist*((origin_x_pos - max_x_pos)/len(image_data))
 pixel_height = sgrA_dist*((max_y_pos - origin_y_pos)/len(image_data[0]))
 
 ############################## Plot the data ############################
+
 # Initialize figure
 fig, ax = plt.subplots(1, figsize=(9, 10))
-# fig.subplots_adjust(left=0.1, bottom=0.1)
 
 # Plot the data
 plot = ax.imshow(image_data, interpolation="nearest", origin="lower",
@@ -67,9 +67,6 @@ plot = ax.imshow(image_data, interpolation="nearest", origin="lower",
 cbaxes = fig.add_axes([0.15, 0.08, 0.6, 0.02])
 fig.colorbar(plot, orientation="horizontal", cax=cbaxes, extend='max', label="Flux density [Jy/beam]")
 ax.set_xlim([0, 3500])
-# ax.set_ylim([0, 4000])
-# ax.set_xlabel("Right Ascension (J2000)")
-# ax.set_ylabel("Declination (J2000)")
 
 # Add the grid
 g = ax.grid(alpha=0.25, color='white')
@@ -134,6 +131,10 @@ for indx, entry in enumerate(data[1:]):  # data[0] is the header row
     beams_inset1.append(patches.Circle((pix_coords[0], pix_coords[1]), source_pixels))
     beams_inset2.append(patches.Circle((pix_coords[0], pix_coords[1]), source_pixels))
 
+    # Add the source name
+    axins.annotate(entry[0], xy=(pix_coords[0], pix_coords[1]), color='w', size=5)
+    axins1.annotate(entry[0], xy=(pix_coords[0], pix_coords[1]), color='w', size=5)
+
 ############################## Overlay best fit data ############################
 
 # Define the collections to house all of the patches
@@ -147,17 +148,17 @@ axins.add_collection(p_inset1)
 axins1.add_collection(p_inset2)
 
 # Sets the ranges on the collections to their correct min and max values
-p.set_array(np.array(mean_T))
-p.set_clim([np.ma.min(mean_T), np.ma.max(mean_T)])
+p.set_array(np.array(mean_N_SO))
+p.set_clim([np.ma.min(mean_N_SO), np.ma.max(mean_N_SO)])
 
-p_inset1.set_array(np.array(mean_T))
-p_inset1.set_clim([np.ma.min(mean_T), np.ma.max(mean_T)])
+p_inset1.set_array(np.array(mean_N_SO))
+p_inset1.set_clim([np.ma.min(mean_N_SO), np.ma.max(mean_N_SO)])
 
-p_inset2.set_array(np.array(mean_T))
-p_inset2.set_clim([np.ma.min(mean_T), np.ma.max(mean_T)])
+p_inset2.set_array(np.array(mean_N_SO))
+p_inset2.set_clim([np.ma.min(mean_N_SO), np.ma.max(mean_N_SO)])
 
 # Adds the colour bar
-plt.colorbar(p, ax=ax, label="T$_{mean}$ [K]")
+plt.colorbar(p, ax=ax, label="N$_{SO, mean}$ [cm$^{-2}$]")
 
 # Change the grid on the inset
 axins.grid(alpha=0.1, color='white')
@@ -178,4 +179,4 @@ plt.xticks(visible=False)
 mark_inset(ax, axins1, loc1=4, loc2=2, fc="none", ec="0.5")
 
 # plt.tight_layout()
-fig.savefig('data/images/20cm_T_mean.pdf')
+fig.savefig('data/images/20cm_N_SO_mean.pdf')
