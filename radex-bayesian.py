@@ -7,7 +7,8 @@ import psycopg2
 import sys
 import subprocess as sp
 
-#from astropy import units as u
+from pdf2image import convert_from_path
+
 from decimal import Decimal
 import numpy as np
 
@@ -97,7 +98,7 @@ if __name__ == '__main__':
     # (normally limited by those with Radex data)
     filtered_data = workerfunctions.filter_data(
         observed_data, relevant_species)
-    
+    '''
     # Determine the estimated column densities based on the temperature (and a number of 
     # other assumptions) and create the necessary databases
     physical_conditions = []
@@ -157,7 +158,7 @@ if __name__ == '__main__':
             
             # Determine estimates of what the physical conditions should be
             physical_conditions.append(inference.param_constraints(obs, sio_data, so_data))
-    
+    '''
     nWalkers = 40 # Number of random walkers to sample parameter space
     nSteps = int(1e2) # Number of steps per walker
     
@@ -166,11 +167,13 @@ if __name__ == '__main__':
 
     # Loop through the sources 
     for obs in observed_data[:8]:
-        if (len(obs["species"]) >= 2 and "SIO" in obs["species"]) or \
-             (len(obs["species"]) >= 2 and "SO" in obs["species"]) or \
-                (len(obs["species"]) >= 2 and "OCS" in obs["species"]):
-
+        # if (len(obs["species"]) >= 2 and "SIO" in obs["species"]) or \
+        #      (len(obs["species"]) >= 2 and "SO" in obs["species"]) or \
+        #         (len(obs["species"]) >= 2 and "OCS" in obs["species"]):
+        if obs["species"] == ["SIO", "SO"]:
+            
             print(obs["source"])
+            '''
             print(obs["species"])
             # Empty lists for parameters and their keys
             pos, pos_keys = [], []
@@ -246,59 +249,56 @@ if __name__ == '__main__':
                 print("Moving to plotting routine")
                 print("Getting data from database")
 
+                # Define the column names for querying the database
+                column_names = ["temp", "dens"] + ["column_density_{0}".format(spec) for spec in obs["species"]]
+
                 # Read the database to retrieve the data
-                try:
-                    chains = db.get_chains(
-                        db_pool=db_radex_pool, 
-                        table=obs["source"], 
-                        column_names=[
-                            "temp",
-                            "dens",
-                            "column_density_SIO",
-                            "column_density_SO",
-                            "column_density_OCS"
-                        ]
-                    )
-                except:
-                    chains = db.get_chains(
-                        db_pool=db_radex_pool,
-                        table=obs["source"],
-                        column_names=[
-                            "temp",
-                            "dens",
-                            "column_density_SIO",
-                            "column_density_SO"
-                        ]
-                    )
+                chains = db.get_chains(
+                    db_pool=db_radex_pool, 
+                    table=obs["source"], 
+                    column_names=column_names
+                )
 
                 # Determine the length of the first chain (assuming all chains are the same length)
+                # and catch any chains that might be 0 length
                 try:
                     chain_length = len(chains)
                 except TypeError:
+                    continue
+
+                if chain_length == 0:
                     continue
 
                 # Throw away the first 20% or so of samples so as to avoid considering initial burn-in period
                 chain = np.array(chains[int(chain_length*0.2):])
 
                 #Name params for chainconsumer (i.e. axis labels)
-                param1 = "T / K"
-                param2 = "log(n$_{H}$) / cm$^{-3}$"
-                param3 = "log(N$_{SiO}$) / cm$^{-2}$"
-                param4 = "log(N$_{SO}$) / cm$^{-2}$"
-                param5 = "log(N$_{OCS}$) / cm$^{-2}$"
+                params = ["T [K]", "log(n$_{H}$) [cm$^{-3}$]"] + [
+                    "log(N$_{{{0}}}$)[cm$^ {{-2}}$]".format(spec) for spec in obs["species"]]
 
                 #Chain consumer plots posterior distributions and calculates
                 #maximum likelihood statistics as well as Geweke test
                 file_out = "{0}/radex-plots/new/corner_{1}.pdf".format(DIREC, obs["source"])
                 file_out_walk = "{0}/radex-plots/new/walks/walk_{1}.pdf".format(DIREC, obs["source"])
                 c = ChainConsumer() 
-                c.add_chain(chain, parameters=[param1,param2,param3,param4], walkers=nWalkers)
-                c.configure(color_params="posterior", cloud=True, usetex=True, summary=False) 
+                c.add_chain(chain, parameters=params, walkers=nWalkers)
+                c.configure(color_params="posterior", cloud=True, usetex=True,
+                            summary=False, sigmas=[0, 1, 2, 3])
                 fig = c.plotter.plot(filename=file_out, display=False)
-                # fig.set_size_inches(6 + fig.get_size_inches())
                 # summary = c.analysis.get_summary()
 
-                #fig_walks = c.plotter.plot_walks(filename=file_out_walk, display=False, plot_posterior=True)
-                fig.close()
-            '''
+                fig_walks = c.plotter.plot_walks(filename=file_out_walk, display=False, plot_posterior=True)
+                plt.close()
+
+                # Convert both pdf to jpeg
+                corners = convert_from_path('{0}'.format(file_out))
+                walks = convert_from_path('{0}'.format(file_out_walk))
+
+                for corner, walk in zip(corners, walks):
+                    corner.save('{0}.jpg'.format(file_out[:-4]), 'JPEG')
+                    walk.save('{0}.jpg'.format(file_out_walk[:-4]), 'JPEG')
+
+                    os.remove(file_out)
+                    os.remove(file_out_walk)
     pool.close()
+
