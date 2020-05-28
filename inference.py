@@ -19,25 +19,34 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
     }
 
     # Unpack the parameters
-    try:
+    if len(params) == 6:
+        T, n, N_sio, N_so, N_ocs, N_h2cs = params[0], params[1], params[2], params[3], params[4], params[5]
+    elif len(params) == 5:
         T, n, N_sio, N_so, N_ocs = params[0], params[1], params[2], params[3], params[4]
-    except IndexError:
+    else:
         T, n, N_sio, N_so = params[0], params[1], params[2], params[3]
 
     for spec_indx, spec in enumerate(observed_data["species"]):
         # Catch any molecular transitions that we're not interested in
-        if spec == "SIO" or spec == "SO" or spec == "OCS":
+        if spec == "SIO" or spec == "SO" or spec == "OCS" or spec == "H2CS":
             # Store the species
             trial_data['species'].append(spec)
             trial_data['transitions'].append(observed_data["transitions"][spec_indx])
 
-            # Set the line width and column density
+            # Set the column density
             if spec == "SIO":
                 N = N_sio
             elif spec == "SO":
                 N = N_so
             elif spec == "OCS":
                 N = N_ocs
+            elif spec == "H2CS":
+                N = N_h2cs
+                # Amend the H2CS species name to account for ortho/para transition
+                if observed_data["transitions"][spec_indx][2] == str(1):
+                    spec = "oH2CS"
+                else:
+                    spec = "pH2CS"
 
             dv = abs(observed_data["linewidths"][spec_indx]) # Some linewidths are -ve
             transition = observed_data["transitions"][spec_indx]
@@ -52,8 +61,8 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
                 'radex < {0}'.format(input_path), 
                 shell=True, 
                 capture_output=True, 
-                check=False
-            )  # &> pipes stdout and stderr
+                check=True
+            )  
 
             # This block ensures that the output file exists before attempting to read it
             while not os.path.exists(output_path):
@@ -220,6 +229,7 @@ def read_radex_output(spec, transition, output_path):
 
             # Extract the RADEX data (easiest is to recognise when -- is used to 
             # define the line transition)
+            
             if (transition == str(words[0]+words[1]+words[2])):  
                 radex_output["E_up"] = float(words[3]) # Extract the energy of the transition
                 radex_output["wav"] = float(words[5]) # Extract the wavelength of the transition
@@ -240,16 +250,22 @@ def ln_radex_prior(x):
     #dens (log space)
     elif x[1] < 2 or x[1] > 8:
         return False
-    #N_sio (log space)
-    elif x[2] < 8 or x[2] > 16:
-        return False
-    #N_so (log space)
-    elif x[3] < 8 or x[3] > 16:
-        return False
-    if len(x) == 5:
-        #N_ocs (log space)
-        if x[4] < 8 or x[4] > 16:
+    # column densities (log space)
+    for column in x[2:]:
+        if column < 8 or column > 16:
             return False
+    # #N_sio (log space)
+    # elif x[2] < 8 or x[2] > 16:
+    #     return False
+    # #N_so (log space)
+    # elif x[3] < 8 or x[3] > 16:
+    #     return False
+    # #N_ocs (log space)
+    # elif x[4] < 8 or x[4] > 16:
+    #     return False
+    # #N_h2cs (log space)
+    # elif x[5] < 8 or x[5] > 16:
+    #     return False
     else:
         return True
 
@@ -268,12 +284,18 @@ def ln_uclchem_prior(x):
 
 def ln_likelihood_radex(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH):
 
-    # Pack the parameters in to the y array for emcee
-    # 0 is T, 1 is n and 2 is N_sio and 3 in N_so and 4 is N_ocs
-    try:
+    # Pack the parameters in to the y array for emcee and extract those
+    # parameters that are 
+    # 0 is T, 1 is n and 2 is N_sio and 3 in N_so and 4 is N_h2cs and 5 is N_ocs
+    if len(x) == 6:
+        y = [x[0], 10**x[1], 10**x[2], 10**x[3], 10**x[4], 10**x[5]]
+        column_densities = [10**x[2], 10**x[3], 10**x[4], 10**x[5]]
+    elif len(x) == 5:
         y = [x[0], 10**x[1], 10**x[2], 10**x[3], 10**x[4]]
-    except IndexError:
+        column_densities = [10**x[2], 10**x[3], 10**x[4]]
+    else:
         y = [x[0], 10**x[1], 10**x[2], 10**x[3]]
+        column_densities = [10**x[2], 10**x[3]]
 
     # Checks to see whether the randomly selected values of x are within
     # the desired range using ln_prior
@@ -281,8 +303,10 @@ def ln_likelihood_radex(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH
         print("Parameters within prior range")
         #call radex to determine flux of given transitions
         trial_data = get_trial_radex_data(y, observed_data, DIREC, RADEX_PATH)
-
+        
+        print(trial_data)
         print("Computing chi-squared statistic")
+
         # Determine chi-squared statistic and write it to file
         chi = chi_squared(
             trial_data['rj_flux'],
@@ -293,11 +317,6 @@ def ln_likelihood_radex(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH
         if trial_data['rj_flux'] == np.inf:
             print("Radex has potentially saturated")
             trial_data['rj_flux'] = "Infinity"
-
-        try:
-            column_densities = [10**x[2], 10**x[3], 10**x[4]]
-        except IndexError:
-            column_densities = [10**x[2], 10**x[3]]
 
         # Put the data in to a dictionary for easier reference when storing
         data = {

@@ -48,7 +48,8 @@ def parse_data(data, db_pool, db_bestfit_pool):
         source_name = entry[0]  # The source name
         sample_size = entry[3]  #  The sample size (in beams)
         species = entry[4][0:entry[4].find(" ")].upper() # The molecule of interest
-        transitions = entry[4][entry[4].find(" ")+1:].replace("–", "--").replace("(", "_").replace(")", "")  # The transition of the molecule
+        transitions = entry[4][entry[4].find(" ")+1:].replace("–", "--").replace(
+            "(", "_").replace(")", "").replace(",", "_")  # The transition of the molecule
         source_flux_dens_Jy = (float(entry[5][0:entry[5].find("±")])/1e3) #  The observed flux density (Jy)
         source_flux_dens_error_Jy = (float(entry[5][entry[5].find("±")+1:])/1e3)  # The observed flux error (Jy)
         linewidths = abs(float(entry[7])*1e3)  # The linewidth (m/s)
