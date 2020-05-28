@@ -210,6 +210,9 @@ if __name__ == '__main__':
             nDim = len(pos[0])
             print("nDim={0}".format(nDim))
 
+            # Define the column names for saving to the database
+            column_names = ["temp", "dens"] + ["column_density_{0}".format(spec) for spec in obs["species"]]
+
             # Run the sampler
             sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_radex, 
                 args=(obs, bestfit_config_file, DIREC, RADEX_PATH), pool=pool)
@@ -232,7 +235,7 @@ if __name__ == '__main__':
                         store = []
                         for k in range(0, nDim):
                             store.append(chain[i][j][k])
-                        db.insert_radex_chain_data(db_pool=db_radex_pool, table=obs["source"], chain=store)
+                        db.insert_radex_chain_data(db_pool=db_radex_pool, table=obs["source"], chain=store, column_names=column_names)
 
                 sampler.reset()
             

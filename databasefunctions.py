@@ -56,17 +56,10 @@ def create_table(db_pool, commands):
             db_pool.putconn(conn)
 
 
-def insert_radex_chain_data(db_pool, table, chain):
+def insert_radex_chain_data(db_pool, table, chain, column_names):
     """ insert multiple vendors into the vendors table  """
-    if len(chain) == 6:
-        sql = "INSERT INTO {0} (id, temp, dens, column_density_SIO, column_density_SO, column_density_H2CS, column_density_OCS) VALUES (DEFAULT, {1}, {2}, {3}, {4}, {5}, {6});".format(
-            table, chain[0], chain[1], chain[2], chain[3], chain[4], chain[5])
-    elif len(chain) == 5:
-        sql = "INSERT INTO {0} (id, temp, dens, column_density_SIO, column_density_SO, column_density_OCS) VALUES (DEFAULT, {1}, {2}, {3}, {4}, {5});".format(
-            table, chain[0], chain[1], chain[2], chain[3], chain[4])
-    else:
-        sql = "INSERT INTO {0} (id, temp, dens, column_density_SIO, column_density_SO) VALUES (DEFAULT, {1}, {2}, {3}, {4});".format(
-            table, chain[0], chain[1], chain[2], chain[3])
+    sql = "INSERT INTO {0} (id, {1}) VALUES (DEFAULT, {2});".format(
+        table, ", ".join(column_names), ', '.join(map(str, chain)))
     conn = None
     try:
         # connect to the PostgreSQL server
@@ -148,43 +141,16 @@ def get_radex_chains(db_pool, table, column_names):
         # Use getconn() to Get Connection from connection pool
         conn = db_pool.getconn()
         cur = conn.cursor()
-        if len(column_names) == 6:
-            cur.execute(
-                "SELECT {0}, {1}, {2}, {3}, {4}, {5} FROM {6};".format(
-                    column_names[0], 
-                    column_names[1],  
-                    column_names[2],
-                    column_names[3],
-                    column_names[4],
-                    column_names[5],
-                    table
-                )
+        cur.execute(
+            "SELECT {0} FROM {1};".format(
+                ", ".join(column_names),
+                table
             )
-        if len(column_names) == 5:
-            cur.execute(
-                "SELECT {0}, {1}, {2}, {3}, {4} FROM {5};".format(
-                    column_names[0],
-                    column_names[1],
-                    column_names[2],
-                    column_names[3],
-                    column_names[4],
-                    table
-                )
-            )
-        if len(column_names) == 4:
-            cur.execute(
-                "SELECT {0}, {1}, {2}, {3} FROM {4};".format(
-                    column_names[0],
-                    column_names[1],
-                    column_names[2],
-                    column_names[3],
-                    table
-                )
-            )
+        )
         rows = cur.fetchall()
         # rows = [r[0] for r in cur.fetchall()]
         print("The number of entries: ", cur.rowcount)
-        # cur.close()
+        
     except (Exception, psycopg2.DatabaseError) as error:
         print("ERROR THROWN")
         print(error)

@@ -19,65 +19,52 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
     }
 
     # Unpack the parameters
-    if len(params) == 6:
-        T, n, N_sio, N_so, N_ocs, N_h2cs = params[0], params[1], params[2], params[3], params[4], params[5]
-    elif len(params) == 5:
-        T, n, N_sio, N_so, N_ocs = params[0], params[1], params[2], params[3], params[4]
-    else:
-        T, n, N_sio, N_so = params[0], params[1], params[2], params[3]
+    T, n, mol_N = params[0], params[1], params[2:]
 
     for spec_indx, spec in enumerate(observed_data["species"]):
-        # Catch any molecular transitions that we're not interested in
-        if spec == "SIO" or spec == "SO" or spec == "OCS" or spec == "H2CS":
-            # Store the species
-            trial_data['species'].append(spec)
-            trial_data['transitions'].append(observed_data["transitions"][spec_indx])
+        # Store the species
+        trial_data['species'].append(spec)
+        trial_data['transitions'].append(observed_data["transitions"][spec_indx])
 
-            # Set the column density
-            if spec == "SIO":
-                N = N_sio
-            elif spec == "SO":
-                N = N_so
-            elif spec == "OCS":
-                N = N_ocs
-            elif spec == "H2CS":
-                N = N_h2cs
-                # Amend the H2CS species name to account for ortho/para transition
-                if observed_data["transitions"][spec_indx][2] == str(1):
-                    spec = "oH2CS"
-                else:
-                    spec = "pH2CS"
-
-            dv = abs(observed_data["linewidths"][spec_indx]) # Some linewidths are -ve
-            transition = observed_data["transitions"][spec_indx]
-
-            # Write the radex input file
-            input_path = '{0}/radex-input/{1}/n{2:E}T{3}N{4:E}.inp'.format(DIREC, spec, n, T, N)
-            output_path = '{0}/radex-output/{1}/n{2:E}T{3}N{4:E}.out'.format(DIREC, spec, n, T, N)
-            write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=290, f_max=360)
-
-            #Run radex
-            shell_output = sp.run(
-                'radex < {0}'.format(input_path), 
-                shell=True, 
-                capture_output=True, 
-                check=True
-            )  
-
-            # This block ensures that the output file exists before attempting to read it
-            while not os.path.exists(output_path):
-                time.sleep(1)
-                print("Waiting for {0}".format(output_path))
-            if os.path.isfile(output_path):
-                # Read the radex output
-                radex_output = read_radex_output(spec, transition, output_path)
-            else:
-                raise ValueError("%s isn't a file!" % output_path)
-
-            # Determine the flux density
-            trial_data['rj_flux'].append(radex_output["rj_flux"])
+        # Set the column density
+        N = mol_N[spec_indx]
+        
+        # Amend the H2CS species name to account for ortho/para transition
+        # 1 is the quantum number defining the ortho transition
+        if spec == "H2CS" and observed_data["transitions"][spec_indx][2] == str(1):
+            spec = "oH2CS"
         else:
-            continue
+            continue # Not concerned with the para transition
+
+        dv = abs(observed_data["linewidths"][spec_indx]) # Some linewidths are -ve
+        transition = observed_data["transitions"][spec_indx]
+
+        # Write the radex input file
+        input_path = '{0}/radex-input/{1}/n{2:E}T{3}N{4:E}.inp'.format(DIREC, spec, n, T, N)
+        output_path = '{0}/radex-output/{1}/n{2:E}T{3}N{4:E}.out'.format(DIREC, spec, n, T, N)
+        write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=290, f_max=360)
+
+        #Run radex
+        shell_output = sp.run(
+            'radex < {0}'.format(input_path), 
+            shell=True, 
+            capture_output=True, 
+            check=True
+        )  
+
+        # This block ensures that the output file exists before attempting to read it
+        while not os.path.exists(output_path):
+            time.sleep(1)
+            print("Waiting for {0}".format(output_path))
+        if os.path.isfile(output_path):
+            # Read the radex output
+            radex_output = read_radex_output(spec, transition, output_path)
+        else:
+            raise ValueError("%s isn't a file!" % output_path)
+
+        # Determine the flux density
+        trial_data['rj_flux'].append(radex_output["rj_flux"])
+        
     return trial_data
 
 
@@ -215,7 +202,7 @@ def read_radex_output(spec, transition, output_path):
 
         # Loop through the simulation information in the header of the 
         # output file
-        for line in lines[:8]:
+        for line in lines[:9]:
             words = line.split()
             # Extract kinetic temperature
             if (words[1] == "T(kin)"): 
@@ -224,12 +211,18 @@ def read_radex_output(spec, transition, output_path):
             if (words[1] == "Density"):
                 radex_output["dens"] = float(words[-1])
         
-        for line in lines[11:]:
+        # Check whether the species is ortho, para and neither and amend 
+        # the line cut offs for RADEX accordingly
+        if ("pH" in spec) or ("oH" in spec):
+            remaining_lines = lines[13:]
+        else:
+            remaining_lines = lines[11:]
+        
+        for line in remaining_lines:
             words = line.split()
 
             # Extract the RADEX data (easiest is to recognise when -- is used to 
             # define the line transition)
-            
             if (transition == str(words[0]+words[1]+words[2])):  
                 radex_output["E_up"] = float(words[3]) # Extract the energy of the transition
                 radex_output["wav"] = float(words[5]) # Extract the wavelength of the transition
@@ -238,7 +231,7 @@ def read_radex_output(spec, transition, output_path):
                 except ValueError:
                     print("Potential Radex saturation")
                     radex_output["rj_flux"] = np.inf
-    
+            
     return radex_output
 
 
@@ -304,7 +297,6 @@ def ln_likelihood_radex(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH
         #call radex to determine flux of given transitions
         trial_data = get_trial_radex_data(y, observed_data, DIREC, RADEX_PATH)
         
-        print(trial_data)
         print("Computing chi-squared statistic")
 
         # Determine chi-squared statistic and write it to file
