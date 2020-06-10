@@ -75,38 +75,82 @@ if __name__ == '__main__':
 
     observed_data = workerfunctions.parse_data(data, db_pool, db_bestfit_pool)
     
-    
-    # Determine the estimated column densities based on the temperature (and a number of 
-    # other assumptions)
-    physical_conditions = []
-    for obs in observed_data:
-        if obs["species"] == ["SIO", "SO"]:
-            physical_conditions.append(inference.param_constraints(obs, sio_data, so_data))
-    '''
-
     # continueFlag = False
-    nWalkers = 8 # Number of random walkers to sample parameter space
+    nWalkers = 4 # Number of random walkers to sample parameter space
     nDim = 2 # Number of dimensions within the parameters
     nSteps = int(1e2) # Number of steps per walker
     
-    # Set up the backend for temporary chain storage
-    # Don't forget to clear it in case the file already exists
-    filename = "{0}/chains/chains.h5".format(DIREC)
-    backend = mc.backends.HDFBackend(filename)
-    backend.reset(nWalkers, nDim)
-
     #Set up MPI Pool
     pool = Pool(4)
 
-    for obs in observed_data[:8]:
-        if obs["species"] != ["SIO", "SO"]:
-            continue
-        else:
+    for obs in observed_data:
+        if (len(obs["species"]) >= 2 and "SIO" in obs["species"]) or \
+                (len(obs["species"]) >= 2 and "SO" in obs["species"]) or \
+            (len(obs["species"]) >= 2 and "OCS" in obs["species"]) or \
+                (len(obs["species"]) >= 2 and "H2CS" in obs["species"]):
 
-            sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood, 
-                args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), backend=backend, pool=pool)
-            pos = []
+            # Checks to see whether the tables exists; if so, delete it
+            if db.does_table_exist(db_pool=db_pool, table=obs["source"]):
+                db.drop_table(db_pool=db_pool, table=obs["source"])
+            if db.does_table_exist(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"])):
+                db.drop_table(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"]))
             
+            # Store the column density string
+            all_column_str = ""  #  Empty string to hold full string once complete
+            for spec_indx, spec in enumerate(obs["species"]):
+                if spec == "SIO" or spec == "SO" or spec == "OCS" or spec == "H2CS":
+                    column_str = "column_density_{0} REAL NOT NULL, ".format(
+                        spec)
+
+                    # Remove the comma on the final column density
+                    if spec_indx == (len(obs["species"])-1):
+                        column_str = column_str[:-2:]
+                    all_column_str = all_column_str + column_str
+
+            # Define the commands necessary to create table in database (raw SQL string)
+            commands = (
+                """
+                CREATE TABLE IF NOT EXISTS {0} (
+                    id SERIAL PRIMARY KEY,
+                    vs REAL NOT NULL,
+                    dens REAL NOT NULL,
+                    {1}
+                );
+                """.format(obs["source"], all_column_str),
+            )
+
+            bestfit_commands = (
+                """
+                CREATE TABLE IF NOT EXISTS {0}_bestfit_conditions (
+                    id SERIAL PRIMARY KEY,
+                    species TEXT [] NOT NULL,
+                    transitions TEXT [] NOT NULL,
+                    vs REAL NOT NULL,
+                    dens REAL NOT NULL,
+                    column_density DOUBLE PRECISION [] NOT NULL,
+                    radex_flux DOUBLE PRECISION [] NOT NULL,
+                    source_flux DOUBLE PRECISION [] NOT NULL,
+                    source_flux_error DOUBLE PRECISION [] NOT NULL,
+                    chi_squared DOUBLE PRECISION NOT NULL
+                );
+                """.format(obs["source"]),
+            )
+
+            # Create the tables
+            db.create_table(db_pool=db_pool, commands=commands)
+            db.create_table(db_pool=db_bestfit_pool, commands=bestfit_commands)
+
+            # Determine the number of dimensions
+            nDim = 2
+            print("nDim={0}".format(nDim))
+
+            # Define the column names for saving to the database
+            column_names = ["vs", "dens"] + ["column_density_{0}".format(spec) for spec in obs["species"]]
+
+            sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_shock,
+                args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), pool=pool)
+            pos = []
+
             # Select the parameters
             for i in range(nWalkers):
                 vs, initial_dens = param_select()
@@ -116,7 +160,7 @@ if __name__ == '__main__':
 
             # Split the chain in to 100 chunks, each 1% of the total size and write out
             nBreak=int(nSteps/10)
-            for counter in range(0, nBreak):
+            for counter in range(0, nSteps):
                 sampler.reset() # Reset the chain
                 print("Running mcmc")
                 pos, prob, state = sampler.run_mcmc(pos, nBreak, progress=False) #start from where we left off previously 
@@ -133,10 +177,11 @@ if __name__ == '__main__':
                         store = []
                         for k in range(0, nDim):
                             store.append(chain[i][j][k])
-                        db.insert_chain_data(db_pool=db_pool, table=obs["source"], chain=store)
+                            print(store)
+                        db.insert_shock_chain_data(db_pool=db_pool, table=obs["source"], chain=store)
 
                 sampler.reset()
-            
+            '''        
             print("Moving to plotting routine")
             print("Getting data from database")
 
@@ -172,5 +217,6 @@ if __name__ == '__main__':
             # summary = c.analysis.get_summary()
 
             fig_walks = c.plotter.plot_walks(filename=file_out_walk, display=False, plot_posterior=True)
+            '''
     pool.close()
-    '''
+    

@@ -58,8 +58,8 @@ print_results = True
 if __name__ == '__main__':
 
     # Define emcee specific parameters
-    nWalkers = 100  # Number of random walkers to sample parameter space
-    nSteps = int(5e2)  # Number of steps per walker
+    nWalkers = 2  # Number of random walkers to sample parameter space
+    nSteps = int(1e2)  # Number of steps per walker
 
     #Set up MPI Pool
     pool = Pool(4)
@@ -112,7 +112,7 @@ if __name__ == '__main__':
     # Begin by looping through all of the observed sources 
     # and start by creating a database for each entry
     physical_conditions = []
-    for obs in observed_data[7:8]:
+    for obs in observed_data[6:7]:
         
         if (len(obs["species"]) >= 2 and "SIO" in obs["species"]) or \
                 (len(obs["species"]) >= 2 and "SO" in obs["species"]) or \
@@ -271,8 +271,6 @@ if __name__ == '__main__':
                 # Name params for chainconsumer (i.e. axis labels)
                 plot_params = ["T [K]", "log(n$_{H}$) [cm$^{-3}$]"] + [
                     "log(N$_{{{0}}}$)[cm$^ {{-2}}$]".format(spec) for spec in obs["species"]]
-
-                print(params)
 
                 # Chain consumer plots posterior distributions and calculates
                 # maximum likelihood statistics as well as Geweke test

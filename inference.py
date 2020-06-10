@@ -1,6 +1,7 @@
 import glob
 import numpy as np
 import os
+from statistics import mean
 import subprocess as sp
 import time
 
@@ -33,10 +34,11 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
         # 1 is the quantum number defining the ortho transition
         if spec == "H2CS" and observed_data["transitions"][spec_indx][2] == str(1):
             spec = "oH2CS"
-        else:
-            continue # Not concerned with the para transition
+        elif spec == "H2CS" and observed_data["transitions"][spec_indx][2] != str(1):
+            continue # Not concerned with the para transition 
 
-        dv = abs(observed_data["linewidths"][spec_indx]) # Some linewidths are -ve
+        dv = mean([abs(float(linewidth)) for linewidth in observed_data["linewidths"]])
+        # dv = abs(observed_data["linewidths"][spec_indx]) # Some linewidths are -ve
         transition = observed_data["transitions"][spec_indx]
 
         # Write the radex input file
@@ -69,7 +71,7 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
 
 
 
-def get_trial_uclchem_data(params, observed_data, DIREC, RADEX_PATH):
+def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
 
     # Declare dictionary to hold trial data
     trial_data = {
@@ -103,6 +105,7 @@ def get_trial_uclchem_data(params, observed_data, DIREC, RADEX_PATH):
         shock_model["temp"][1:],
         shock_model["times"][1:]
     )
+
     n = workerfunctions.resolved_quantity(
         shock_model["dens"][1:],
         shock_model["dens"][1:],
@@ -137,15 +140,19 @@ def get_trial_uclchem_data(params, observed_data, DIREC, RADEX_PATH):
         trial_data['transitions'].append(transition)
 
         print("Writing the radex inputs")
-        input_path = '{0}/radex-input/{1}/vs{2}n{3:.6E}.in\n'.format(DIREC, spec, vs, initial_dens)
-        output_path = '{0}/radex-output/{1}/vs{2}n{3:.6E}.out\n'.format(DIREC, spec, vs, initial_dens)
+        input_path = '{0}/radex-input/{1}/n{2:E}T{3}N{4:E}.inp'.format(DIREC, spec, n, T, N)
+        output_path = '{0}/radex-output/{1}/n{2:E}T{3}N{4:E}.out'.format(DIREC, spec, n, T, N)
         # Write the radex input file
         write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=290, f_max=360)
 
         print("Running radex")
         # Run radex
-        sp.run('radex < {0}/radex-input/{1}/vs{2}n{3:.6E}.inp &> /dev/null'.format(
-            DIREC, spec, vs, initial_dens), shell = True)  # &> pipes stdout and stderr
+        shell_output = sp.run(
+            'radex < {0}'.format(input_path), 
+            shell=True,
+            capture_output=True,
+            check=True
+        ) 
 
         # This block ensures that the output file exists before attempting to read it
         while not os.path.exists(output_path):
@@ -158,11 +165,11 @@ def get_trial_uclchem_data(params, observed_data, DIREC, RADEX_PATH):
             raise ValueError("%s isn't a file!" % output_path)
 
         # Catch any radex saturation problems
-        if radex_output["flux"] < 0 or radex_output["flux"] > 1e2:
-            radex_output["flux"] = np.inf
+        if radex_output["rj_flux"] < 0 or radex_output["rj_flux"] > 10:
+            radex_output["rj_flux"] = np.inf
 
         # Append the radex output data to the trial_data dictionary
-        trial_data['flux'].append(radex_output["flux"])
+        trial_data['rj_flux'].append(radex_output["rj_flux"])
     
     return trial_data
 
@@ -247,29 +254,17 @@ def ln_radex_prior(x):
     for column in x[2:]:
         if column < 8 or column > 16:
             return False
-    # #N_sio (log space)
-    # elif x[2] < 8 or x[2] > 16:
-    #     return False
-    # #N_so (log space)
-    # elif x[3] < 8 or x[3] > 16:
-    #     return False
-    # #N_ocs (log space)
-    # elif x[4] < 8 or x[4] > 16:
-    #     return False
-    # #N_h2cs (log space)
-    # elif x[5] < 8 or x[5] > 16:
-    #     return False
     else:
         return True
 
 
 # prior probability function 
-def ln_uclchem_prior(x):
+def ln_shock_prior(x):
     # velocity
-    if x[0]<5 or x[0]>20:
+    if x[0]<20 or x[0]>60:
         return False
     # density (log space)
-    elif x[1]<2 or x[1]>5:
+    elif x[1]<3 or x[1]>7:
         return False
     else:
         return True
@@ -279,16 +274,9 @@ def ln_likelihood_radex(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH
 
     # Pack the parameters in to the y array for emcee and extract those
     # parameters that are 
-    # 0 is T, 1 is n and 2 is N_sio and 3 in N_so and 4 is N_h2cs and 5 is N_ocs
-    if len(x) == 6:
-        y = [x[0], 10**x[1], 10**x[2], 10**x[3], 10**x[4], 10**x[5]]
-        column_densities = [10**x[2], 10**x[3], 10**x[4], 10**x[5]]
-    elif len(x) == 5:
-        y = [x[0], 10**x[1], 10**x[2], 10**x[3], 10**x[4]]
-        column_densities = [10**x[2], 10**x[3], 10**x[4]]
-    else:
-        y = [x[0], 10**x[1], 10**x[2], 10**x[3]]
-        column_densities = [10**x[2], 10**x[3]]
+    # 0 is T, 1 is n and the remainder are column densities
+    column_densities = [10**N for N in x[2:]]
+    y = [x[0], 10**x[1]] + column_densities
 
     # Checks to see whether the randomly selected values of x are within
     # the desired range using ln_prior
@@ -338,40 +326,51 @@ def ln_likelihood_radex(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH
 
 
 #likelihood function
-def ln_likelihood(x, observed_data, bestfit_db_connection, DIREC, RADEX_PATH):
+def ln_likelihood_shock(x, observed_data, bestfit_db_connection, DIREC, RADEX_PATH):
 
     # Pack the parameters in to the y array for emcee
     # 0 is vs, 1 is n (initial density)
     y = [x[0], 10**x[1]]
 
     # Checks to see whether the randomly selected values of x are within
-    # the desired range using ln_prior
-    if ln_prior(x):
+    # the desired range using ln_shock_prior
+    if ln_shock_prior(x):
         
         print("Parameters within prior range")
         #call radex to determine flux of given transitions
-        trial_data = get_trial_uclchem_data(y, observed_data, DIREC, RADEX_PATH)
+        trial_data = get_trial_shock_data(y, observed_data, DIREC, RADEX_PATH)
     
         print("Computing chi-squared statistic")
         # Determine chi-squared statistic and write it to file
-        chi = chi_squared(trial_data['flux'], 
-            observed_data['source_flux'],  
-            observed_data['source_flux_error']
+        chi = chi_squared(trial_data['rj_flux'], 
+            observed_data['source_rj_flux'],  
+            observed_data['source_rj_flux_error']
         )
 
-        if trial_data['flux'] == np.inf:
+        if trial_data['rj_flux'] == np.inf:
             print("Radex has potentially saturated")
-            trial_data['flux'] = "Infinity"
+            trial_data['rj_flux'] = "Infinity"
 
-        # Put the data in to a list for easier reference when storing
-        data = [trial_data['species'], trial_data['transitions'], x[0], 10**x[1], 
-                    trial_data['resolved_T'], trial_data['resolved_n'], trial_data['N'], 
-                    trial_data['flux'], observed_data['source_flux'], observed_data['source_flux_error'], chi]
+        # Put the data in to a dictionary for easier reference when storing
+        data = {
+            "species": trial_data['species'],
+            "transitions": trial_data['transitions'],
+            "vs": x[0],
+            "dens": 10**x[1],
+            "column_density": trial_data['N'],
+            "rj_flux": trial_data['rj_flux'],
+            "source_rj_flux": observed_data['source_rj_flux'],
+            "source_rj_flux_error": observed_data['source_rj_flux_error'],
+            "chi": chi
+        }
 
         print("Inserting the chain data (and other quantities) in to the database")
         # Save the best fit data for each species
-        db.insert_data(db_pool=bestfit_db_connection,
-                       table="{0}_bestfit_conditions".format(observed_data["source"]), data=data)
+        db.insert_shock_data(
+            db_pool=bestfit_db_connection,
+            table="{0}_bestfit_conditions".format(observed_data["source"]), 
+            data=data
+        )
 
         return -0.5*chi
     
@@ -484,7 +483,7 @@ def rj_flux(source_flux_dens_Jy, transition_freq, linewidth):
     theta_x, theta_y = 0.37*4.84814e-6, 0.31*4.84814e-6 
     
     # source area and solid angle
-    source_area = np.pi*(theta_x*d)*(theta_y*d)  # small angle approx
+    source_area = 4*np.pi*(theta_x*d)*(theta_y*d)  # small angle approx
     solid_angle = source_area/(d**2)
 
     # Determine the Rayleigh-Jeans flux in K

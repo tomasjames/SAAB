@@ -78,7 +78,7 @@ def parse_data(data, db_pool, db_bestfit_pool):
             linewidths/1e3
         )
 
-        # Check to see whether this is the first data entry
+        # Check to see whether this is the first § entry
         # Or whether the source already exists within the conditioned dictionary
         if indx == 0 or observed_data[len(observed_data)-1]['source'] != source_name:
             source_indx += 1

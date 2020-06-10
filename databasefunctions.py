@@ -82,7 +82,7 @@ def insert_radex_chain_data(db_pool, table, chain, column_names):
             db_pool.putconn(conn)
 
 	
-def insert_uclchem_chain_data(db_pool, table, chain):
+def insert_shock_chain_data(db_pool, table, chain):
     """ insert multiple vendors into the vendors table  """
     sql = "INSERT INTO {0} (id, vs, initial_dens) VALUES (DEFAULT, {1}, {2});".format(table, chain[0], chain[1])
     conn = None
@@ -111,6 +111,32 @@ def insert_data(db_pool, table, data):
     """ insert multiple vendors into the vendors table  """
     sql = """INSERT INTO {0} (id, species, transitions, temp, dens, column_density, radex_flux, source_flux, source_flux_error, chi_squared) VALUES ( DEFAULT, ARRAY {1}, ARRAY {2}, {3}, {4}, ARRAY {5}, ARRAY {6}, ARRAY {7}, ARRAY {8}, {9} );""".format(
         table, data["species"], data["transitions"], data["temp"], data["dens"], data["column_density"], data["rj_flux"], data["source_rj_flux"], data["source_rj_flux_error"], data["chi"])
+    conn = None
+    try:
+        # connect to the PostgreSQL server
+        # Use getconn() to Get Connection from connection pool
+        conn = db_pool.getconn()
+        # create a new cursor
+        cur = conn.cursor()
+        # execute the INSERT statement
+        cur.execute(sql, table)
+        # commit the changes to the database
+        conn.commit()
+        # close communication with the database
+        # cur.close()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+    finally:
+        if conn is not None:
+            conn.close()
+            # Release the connection object back to the pool
+            db_pool.putconn(conn)
+
+
+def insert_shock_data(db_pool, table, data):
+    """ insert multiple vendors into the vendors table  """
+    sql = """INSERT INTO {0} (id, species, transitions, vs, dens, column_density, radex_flux, source_flux, source_flux_error, chi_squared) VALUES ( DEFAULT, ARRAY {1}, ARRAY {2}, {3}, {4}, ARRAY {5}, ARRAY {6}, ARRAY {7}, ARRAY {8}, {9} );""".format(
+        table, data["species"], data["transitions"], data["vs"], data["dens"], data["column_density"], data["rj_flux"], data["source_rj_flux"], data["source_rj_flux_error"], data["chi"])
     conn = None
     try:
         # connect to the PostgreSQL server
