@@ -25,7 +25,7 @@ import workerfunctions
 
 def param_select():
     vs = random.uniform(10, 30)
-    initial_dens = random.uniform(3, 6)
+    initial_dens = random.uniform(3, 5)
 
     return vs, initial_dens
 
@@ -59,8 +59,11 @@ if __name__ == '__main__':
         'Z': [197.515, 2*850.217] # From Splatalogue (https://www.cv.nrao.edu/php/splat/species_metadata_displayer.php?species_id=20)
     }
 
+    # Declare the species that we're interested in
+    relevant_species = ["SIO", "SO", "OCS", "H2CS"]
+
     # Declare the database connections
-    config_file = config.config_file(db_init_filename='database.ini', section='postgresql')
+    config_file = config.config_file(db_init_filename='database.ini', section='shock_fit_results')
     bestfit_config_file = config.config_file(db_init_filename='database.ini', section='bestfit_conditions')
 
     # Set up the connection pools
@@ -73,9 +76,14 @@ if __name__ == '__main__':
         data = list(reader)
         f.close()
 
+    # Parse the data to a dict list
     observed_data = workerfunctions.parse_data(data, db_pool, db_bestfit_pool)
     
-    # continueFlag = False
+    # Filter the observed data to contain only those species that we can use
+    # (normally limited by those with Radex data)
+    filtered_data = workerfunctions.filter_data(
+        observed_data, relevant_species)
+
     nWalkers = 4 # Number of random walkers to sample parameter space
     nDim = 2 # Number of dimensions within the parameters
     nSteps = int(1e2) # Number of steps per walker
@@ -83,7 +91,7 @@ if __name__ == '__main__':
     #Set up MPI Pool
     pool = Pool(4)
 
-    for obs in observed_data:
+    for obs in filtered_data[6:7]:
         if (len(obs["species"]) >= 2 and "SIO" in obs["species"]) or \
                 (len(obs["species"]) >= 2 and "SO" in obs["species"]) or \
             (len(obs["species"]) >= 2 and "OCS" in obs["species"]) or \
@@ -106,7 +114,7 @@ if __name__ == '__main__':
                     if spec_indx == (len(obs["species"])-1):
                         column_str = column_str[:-2:]
                     all_column_str = all_column_str + column_str
-
+                    
             # Define the commands necessary to create table in database (raw SQL string)
             commands = (
                 """
@@ -118,7 +126,7 @@ if __name__ == '__main__':
                 );
                 """.format(obs["source"], all_column_str),
             )
-
+            
             bestfit_commands = (
                 """
                 CREATE TABLE IF NOT EXISTS {0}_bestfit_conditions (
@@ -139,7 +147,7 @@ if __name__ == '__main__':
             # Create the tables
             db.create_table(db_pool=db_pool, commands=commands)
             db.create_table(db_pool=db_bestfit_pool, commands=bestfit_commands)
-
+            
             # Determine the number of dimensions
             nDim = 2
             print("nDim={0}".format(nDim))
@@ -181,7 +189,7 @@ if __name__ == '__main__':
                         db.insert_shock_chain_data(db_pool=db_pool, table=obs["source"], chain=store)
 
                 sampler.reset()
-            '''        
+            '''    
             print("Moving to plotting routine")
             print("Getting data from database")
 

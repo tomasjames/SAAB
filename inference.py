@@ -96,40 +96,49 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     # Run the UCLCHEM model up to the dissipation length time analogue
     print("Running UCLCHEM")
     shock_model = workerfunctions.run_uclchem(
-        vs, initial_dens, t_diss, DIREC)
+        vs, initial_dens, t_diss, observed_data["species"], DIREC)
 
     # Average the quantities across the dissipation region
     # (i.e. the time that we've evolved the model for)
     T = workerfunctions.resolved_quantity(
-        shock_model["dens"][1:],
-        shock_model["temp"][1:],
-        shock_model["times"][1:]
+        shock_model["dens"],
+        shock_model["temp"],
+        shock_model["times"]
     )
 
     n = workerfunctions.resolved_quantity(
-        shock_model["dens"][1:],
-        shock_model["dens"][1:],
-        shock_model["times"][1:]
+        shock_model["dens"],
+        shock_model["dens"],
+        shock_model["times"]
     )
 
     # Save those quantities to the dict lists
     trial_data["resolved_T"] = T
     trial_data["resolved_n"] = n
-
+    
     for spec_indx, spec in enumerate(observed_data["species"]):    
+        print(spec_indx)
         # Store the species
         trial_data['species'].append(spec)
 
         # Get the abundances
-        abund = shock_model["abundances"][spec_indx][1:]
+        abund = shock_model["abundances"][spec_indx]
         
         # Set the column density
         N = workerfunctions.resolved_quantity(
-            shock_model["dens"][1:],
-            [a*b for a, b in zip(shock_model["H_coldens"][1:], abund)],
-            shock_model["times"][1:]
+            shock_model["dens"],
+            [a*b for a, b in zip(shock_model["H_coldens"], abund)],
+            shock_model["times"]
         )
         
+        # Amend the H2CS column density to account for ortho-to-para ratio
+        # i.e. we're interested in para
+        if spec == "H2CS":
+            spec = "pH2CS"
+            # Ortho to para ratio (statistical value of 3:1)
+            o_p = 4
+            N = N/o_p
+
         trial_data["N"].append(N)
 
         # Get the linewidth and relevant transition
@@ -142,6 +151,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
         print("Writing the radex inputs")
         input_path = '{0}/radex-input/{1}/n{2:E}T{3}N{4:E}.inp'.format(DIREC, spec, n, T, N)
         output_path = '{0}/radex-output/{1}/n{2:E}T{3}N{4:E}.out'.format(DIREC, spec, n, T, N)
+        
         # Write the radex input file
         write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=290, f_max=360)
 
@@ -209,8 +219,13 @@ def read_radex_output(spec, transition, output_path):
 
         # Loop through the simulation information in the header of the 
         # output file
-        for line in lines[:9]:
+        for line in lines[:8]:
             words = line.split()
+
+            # Determine whether the iterations have saturated
+            if "*" in words[-2]:
+                continue
+
             # Extract kinetic temperature
             if (words[1] == "T(kin)"): 
                 radex_output["temp"] = float(words[-1])
@@ -261,10 +276,10 @@ def ln_radex_prior(x):
 # prior probability function 
 def ln_shock_prior(x):
     # velocity
-    if x[0]<20 or x[0]>60:
+    if x[0]<10 or x[0]>30:
         return False
     # density (log space)
-    elif x[1]<3 or x[1]>7:
+    elif x[1]<3 or x[1]>5:
         return False
     else:
         return True

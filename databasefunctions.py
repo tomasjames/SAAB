@@ -84,7 +84,7 @@ def insert_radex_chain_data(db_pool, table, chain, column_names):
 	
 def insert_shock_chain_data(db_pool, table, chain):
     """ insert multiple vendors into the vendors table  """
-    sql = "INSERT INTO {0} (id, vs, initial_dens) VALUES (DEFAULT, {1}, {2});".format(table, chain[0], chain[1])
+    sql = "INSERT INTO {0} (id, vs, dens) VALUES (DEFAULT, {1}, {2});".format(table, chain[0], chain[1])
     conn = None
     try:
         # connect to the PostgreSQL server

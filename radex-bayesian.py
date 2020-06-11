@@ -112,7 +112,7 @@ if __name__ == '__main__':
     # Begin by looping through all of the observed sources 
     # and start by creating a database for each entry
     physical_conditions = []
-    for obs in observed_data[6:7]:
+    for obs in filtered_data[6:7]:
         
         if (len(obs["species"]) >= 2 and "SIO" in obs["species"]) or \
                 (len(obs["species"]) >= 2 and "SO" in obs["species"]) or \

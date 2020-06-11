@@ -143,7 +143,7 @@ def filter_data(data, species):
     return filtered_data
 
 
-def run_uclchem(vs, n, t_evol, DIREC):
+def run_uclchem(vs, n, t_evol, species, DIREC):
 
     # Define the table name
     file_name = "phase1-n{0:.6E}".format(n)
@@ -176,7 +176,7 @@ def run_uclchem(vs, n, t_evol, DIREC):
                 "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
                 "outputFile": "{0}/UCLCHEM/output/start/full_output_{1}.dat".format(DIREC, file_name)
             },
-        ["SIO", "SO"])
+        species)
     finally:
         #Run UCLCHEM
         uclchem.general(
@@ -198,7 +198,7 @@ def run_uclchem(vs, n, t_evol, DIREC):
         print("UCLCHEM run complete")
 
         times, dens, temp, abundances = plotfunctions.read_uclchem(
-            "{0}/UCLCHEM/output/data/v{1:.6E}n{2:.6E}.dat".format(DIREC, vs, n), ["SIO", "SO"])
+            "{0}/UCLCHEM/output/data/v{1:.6E}n{2:.6E}.dat".format(DIREC, vs, n), species)
     
         # Determine the H column density through the shock
         coldens = [r_out*(3e18)*n_i for n_i in dens]
