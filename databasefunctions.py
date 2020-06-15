@@ -159,7 +159,7 @@ def insert_shock_data(db_pool, table, data):
             db_pool.putconn(conn)
 
 
-def get_radex_chains(db_pool, table, column_names):
+def get_chains(db_pool, table, column_names):
     """ query chains from the chain_storage table """
     conn = None
     try:

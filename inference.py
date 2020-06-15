@@ -132,12 +132,12 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
         )
         
         # Amend the H2CS column density to account for ortho-to-para ratio
-        # i.e. we're interested in para
+        # i.e. we're interested in ortho
         if spec == "H2CS":
-            spec = "pH2CS"
+            spec = "oH2CS"
             # Ortho to para ratio (statistical value of 3:1)
-            o_p = 4
-            N = N/o_p
+            o_p = 3/4
+            N = N*o_p
 
         trial_data["N"].append(N)
 

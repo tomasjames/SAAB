@@ -23,7 +23,7 @@ import databasefunctions as db
 import inference
 import workerfunctions
 
-def param_select():
+def param_select(params):
     vs = random.uniform(10, 30)
     initial_dens = random.uniform(3, 5)
 
@@ -122,9 +122,8 @@ if __name__ == '__main__':
                     id SERIAL PRIMARY KEY,
                     vs REAL NOT NULL,
                     dens REAL NOT NULL,
-                    {1}
                 );
-                """.format(obs["source"], all_column_str),
+                """.format(obs["source"]),
             )
             
             bestfit_commands = (
@@ -167,7 +166,7 @@ if __name__ == '__main__':
             print(obs["source"])
 
             # Split the chain in to 100 chunks, each 1% of the total size and write out
-            nBreak=int(nSteps/10)
+            nBreak=int(nSteps/100)
             for counter in range(0, nSteps):
                 sampler.reset() # Reset the chain
                 print("Running mcmc")
