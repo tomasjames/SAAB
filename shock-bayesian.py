@@ -23,7 +23,7 @@ import databasefunctions as db
 import inference
 import workerfunctions
 
-def param_select(params):
+def param_select():
     vs = random.uniform(10, 30)
     initial_dens = random.uniform(3, 5)
 
