@@ -4,6 +4,7 @@ __pycache__/*
 radex-input/*
 radex-output/*
 radex-plots/*
+UCLCHEM-plots/*
 radex.log
 /UCLCHEM
 chains*

@@ -95,8 +95,12 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
 
     # Run the UCLCHEM model up to the dissipation length time analogue
     print("Running UCLCHEM")
-    shock_model = workerfunctions.run_uclchem(
-        vs, initial_dens, t_diss, observed_data["species"], DIREC)
+    shock_model = workerfunctions.run_uclchem(vs, initial_dens, t_diss, observed_data["species"], DIREC)
+
+    # Plot the UCLCHEM plots
+    filename = "{0}/UCLCHEM/output/data/v{1:.6E}n{2:.6E}.dat".format(DIREC, vs, initial_dens)
+    plotfile = "{0}/UCLCHEM-plots/v{1:.6E}n{2:.6E}.png".format(DIREC, vs, initial_dens)
+    workerfunctions.plot_uclchem(filename, plotfile, observed_data["species"])
 
     # Average the quantities across the dissipation region
     # (i.e. the time that we've evolved the model for)

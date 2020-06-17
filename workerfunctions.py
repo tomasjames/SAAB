@@ -6,6 +6,7 @@ import sys
 sys.path.insert(1, "{0}/UCLCHEM/".format(os.getcwd()))
 sys.path.insert(1, "{0}/UCLCHEM/scripts/".format(os.getcwd()))
 
+import matplotlib.pyplot as plt
 import numpy as np
 
 import databasefunctions as db
@@ -163,7 +164,6 @@ def run_uclchem(vs, n, t_evol, species, DIREC):
 
     # Check if phase 1 exists (as n is the only important factor here)
     try:
-        # db.does_table_exist(db_params=config_file, table=file_name)
         open("{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name))
     except FileNotFoundError:
         uclchem.general(
@@ -208,6 +208,40 @@ def run_uclchem(vs, n, t_evol, species, DIREC):
                 "temp": temp,
                 "abundances": abundances,
                 "H_coldens": coldens}
+
+
+def plot_uclchem(filename, plotfile, species):
+    # Read the filename
+    times, dens, temp, abundances = plotfunctions.read_uclchem(filename, species)
+
+    # Set up the plot    
+    fig, ax = plt.subplots(3)
+
+    # Plot abundances
+    for spec_indx, spec_name in enumerate(species):
+        ax[0].loglog(times, abundances[spec_indx], label=spec_name)
+
+    # Plot temp and dens
+    ax[1].loglog(times, dens)
+    ax[2].loglog(times, temp)
+
+    # Remove ticks from axis 1 and 2
+    ax[0].set_xticks([])
+    ax[1].set_xticks([])
+
+    # Plot legends
+    ax[0].legend(loc=4, fontsize='small')
+    
+    # Set labels
+    ax[0].set_ylabel("X$_{Species}$")
+    ax[1].set_ylabel("n$_{H}$ [cm$^{-3}]$")
+    ax[2].set_ylabel("T[K]")
+    ax[2].set_xlabel('t [yrs]')
+
+    # Save the files
+    fig.savefig(plotfile)
+
+    return 
 
 
 '''
