@@ -47,7 +47,7 @@ def parse_data(data, db_pool, db_bestfit_pool):
     # Extract the columns from the data and insert in to data list
     for indx, entry in enumerate(data[1:]):  # data[0] is the header row
         source_name = entry[0]  # The source name
-        sample_size = entry[3]  #  The sample size (in beams)
+        num_beams = float(entry[3])  #  The number of beams in the observation
         species = entry[4][0:entry[4].find(" ")].upper() # The molecule of interest
         transitions = entry[4][entry[4].find(" ")+1:].replace("–", "--").replace(
             "(", "_").replace(")", "").replace(",", "_")  # The transition of the molecule
@@ -66,16 +66,20 @@ def parse_data(data, db_pool, db_bestfit_pool):
         else:
             transition_freq = np.nan
 
+        print(num_beams)
+        
         # Convert flux from Jy to Rayleigh-Jeans estimate in K
         rj_equiv = inference.rj_flux(
             source_flux_dens_Jy,
             transition_freq,
+            num_beams,
             linewidths/1e3
         )
-
+        
         rj_equiv_error = inference.rj_flux(
             source_flux_dens_error_Jy,
             transition_freq,
+            num_beams,
             linewidths/1e3
         )
 
@@ -84,7 +88,7 @@ def parse_data(data, db_pool, db_bestfit_pool):
         if indx == 0 or observed_data[len(observed_data)-1]['source'] != source_name:
             source_indx += 1
             data_storage['source'] = source_name
-            data_storage['sample_size'] = sample_size
+            data_storage['num_beams'] = num_beams
             data_storage['species'].append(species)
             data_storage['transitions'].append(transitions)
             data_storage['source_flux_dens_Jy'].append(source_flux_dens_Jy)
@@ -129,6 +133,8 @@ def filter_data(data, species):
     """    
     filtered_data = [] # List to hold the resulting data
     for source in data: # Loop through the data
+        if len(source["species"]) < 2:
+            continue
         diffs = list(set(source["species"]) - set(species)) # Find the differences between species in data and species of interest
         for unique in diffs: # Remove those unique elements found above
             indx = source["species"].index(unique)
@@ -144,102 +150,104 @@ def filter_data(data, species):
     return filtered_data
 
 
-def run_uclchem(vs, n, t_evol, species, DIREC):
-
-    # Define the table name
-    file_name = "phase1-n{0:.6E}".format(n)
-
+def get_r_out(n):
+    
     # Set r_out in order to set the extinction correctly
     # within UCLCHEM
     if n <= 1e2:
         r_out = 5.3
     elif 1e2 < n <= 1e3:
-        r_out = 2.6
+        r_out = 1.0
     elif 1e3 < n <= 1e4:
-        r_out = 0.5
+        r_out = 0.35
     elif 1e4 < n <= 1e5:
-        r_out = 0.25
+        r_out = 0.2
     else:
-        r_out = 0.05
+        r_out = 0.1
+    
+    return r_out
+
+def run_uclchem(phase1, phase2, species, DIREC):
 
     # Check if phase 1 exists (as n is the only important factor here)
     try:
-        open("{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name))
+        open("{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, phase1["phase1_out_file"]))
     except FileNotFoundError:
         uclchem.general(
-            {
-                "initialDens": 1e2,
-                "finalDens": n,
-                "rout": r_out,
-                "phase": 1,
-                "readAbunds": 0,
-                "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
-                "outputFile": "{0}/UCLCHEM/output/start/full_output_{1}.dat".format(DIREC, file_name)
-            },
-        species)
+            phase1,
+            species
+        )
     finally:
         #Run UCLCHEM
         uclchem.general(
-            {
-                "initialDens": 2*n,
-                "finalDens": n,
-                "finalTime": t_evol,
-                "vs": vs,
-                "rout": r_out,
-                "switch": 0,
-                "phase": 2,
-                "readAbunds": 1,
-                "desorb": 1,
-                "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
-                "outputFile": "{0}/UCLCHEM/output/data/v{1:.6E}n{2:.6E}.dat".format(DIREC, vs, n)
-            },
-            ["SIO", "SO"])
+            phase2,
+            species,
+        )
     
         print("UCLCHEM run complete")
 
         times, dens, temp, abundances = plotfunctions.read_uclchem(
-            "{0}/UCLCHEM/output/data/v{1:.6E}n{2:.6E}.dat".format(DIREC, vs, n), species)
+            "{0}/UCLCHEM/output/data/v{1:.6E}n{2:.6E}.dat".format(DIREC, phase2["vs"], phase2["initial_dens"]), species)
     
         # Determine the H column density through the shock
-        coldens = [r_out*(3e18)*n_i for n_i in dens]
+        coldens = [phase2["r_out"]*(3e18)*n_i for n_i in dens]
 
-        return {"times": times,
-                "dens": dens,
-                "temp": temp,
-                "abundances": abundances,
-                "H_coldens": coldens}
+        return {
+            "times": times,
+            "dens": dens,
+            "temp": temp,
+            "abundances": abundances,
+            "H_coldens": coldens
+        }
 
 
-def plot_uclchem(filename, plotfile, species):
-    # Read the filename
-    times, dens, temp, abundances = plotfunctions.read_uclchem(filename, species)
+def plot_uclchem(model, species, plotfile):
+
+    # Determine the cloud size in cm
+    cloud_size = get_r_out(model["dens"][0])*3.086e18
+
+    # Determine the H column density
+    H_coldens = [cloud_size*b for b in model["dens"]]
 
     # Set up the plot    
-    fig, ax = plt.subplots(3)
+    fig, ax = plt.subplots(3, figsize=(8, 30))
+
+    # Twin the last axis
+    ax2 = ax[2].twinx()
 
     # Plot abundances
     for spec_indx, spec_name in enumerate(species):
-        ax[0].loglog(times, abundances[spec_indx], label=spec_name)
+        ax[0].loglog(model["times"], model["abundances"][spec_indx], label=spec_name)
+        ax[1].loglog(model["times"], [a*b for (a,b) in zip(H_coldens, model["abundances"][spec_indx])], label=spec_name)
 
     # Plot temp and dens
-    ax[1].loglog(times, dens)
-    ax[2].loglog(times, temp)
+    ax[2].loglog(model["times"], model["dens"], linestyle="--", color="r", label="n$_{H}$")
+    ax2.loglog(model["times"], model["temp"], linestyle=":", color="g", label="T")
 
-    # Remove ticks from axis 1 and 2
+    # Remove ticks from axis 0 and 1
     ax[0].set_xticks([])
     ax[1].set_xticks([])
 
     # Plot legends
-    ax[0].legend(loc=4, fontsize='small')
+    for axis in ax:
+        axis.legend(loc='best', fontsize='small')
+    ax2.legend(loc='best', fontsize='small')
     
     # Set labels
     ax[0].set_ylabel("X$_{Species}$")
-    ax[1].set_ylabel("n$_{H}$ [cm$^{-3}]$")
-    ax[2].set_ylabel("T[K]")
+    ax[1].set_ylabel("N$_{Species}$ [cm$^{-2}$]")
+    ax[2].set_ylabel("n$_{H}$ [cm$^{-3}$]", color="r")
+    ax2.set_ylabel("T [K]", color="g")
     ax[2].set_xlabel('t [yrs]')
+
+    # Compress the plot
+    plt.tight_layout()
 
     # Save the files
     fig.savefig(plotfile)
+
+    # Close plot
+    plt.close()
 
     return 
 
@@ -304,7 +312,7 @@ def time_distance_transform(vel, times):
 def reset_data_dict():
     data = {
         'source': "",  # The source name
-        'sample_size': 0,  # The sample size in beams
+        'num_beams': 0,  # The sample size in beams
         'species': [],  # Species of interest
         'transitions': [],  #  Transitions of interest
         'transition_freqs': [],  # Transition frequencies according to Splatalogue in GHz

@@ -27,22 +27,27 @@ import workerfunctions
 
 def param_select(params):
     if params['temp']:
-        T = round(random.uniform(100, 2500), 2)
+        T_lower = 60.0  #  Lower limit set by Eu for SiO and SO transitions 
+        if params["N_h2cs"]:
+            T_lower = 86.0 # Limit from Splatalogue for 9(1,9)--8(1,8)
+        if params["N_ocs"]:
+            T_lower = 190.0  # Limit from Splatalogue for 25--24
+        T = random.uniform(T_lower, 1000)
         params['temp'] = T
     if params['dens']:
-        dens = round(random.uniform(3, 8), 2)
+        dens = random.uniform(3, 7)
         params['dens'] = dens
     if params['N_sio']:
-        N_sio = round(random.uniform(8, 16), 2)
+        N_sio = random.uniform(12, 15)
         params['N_sio'] = N_sio
     if params['N_so']:
-        N_so = round(random.uniform(8, 16), 2)
+        N_so = random.uniform(12, 15)
         params['N_so'] = N_so
     if params['N_ocs']:
-        N_ocs = round(random.uniform(8, 16), 2)
+        N_ocs = random.uniform(12, 16)
         params['N_ocs'] = N_ocs
     if params['N_h2cs']:
-        N_h2cs = round(random.uniform(8, 16), 2)
+        N_h2cs = random.uniform(12, 16)
         params['N_h2cs'] = N_h2cs
 
     return params
@@ -58,11 +63,11 @@ print_results = True
 if __name__ == '__main__':
 
     # Define emcee specific parameters
-    nWalkers = 2  # Number of random walkers to sample parameter space
+    nWalkers = 20  # Number of random walkers to sample parameter space
     nSteps = int(1e2)  # Number of steps per walker
 
     #Set up MPI Pool
-    pool = Pool(4)
+    pool = Pool(12)
 
     # Define the datafile
     datafile = "{0}/data/tabula-sio_intratio.csv".format(DIREC)
@@ -85,7 +90,7 @@ if __name__ == '__main__':
     }
 
     # Declare the species that we're interested in
-    relevant_species = ["SIO", "SO", "OCS", "H2CS"]
+    relevant_species = ["SIO", "SO", "H2CS", "OCS"]
 
     # Declare the database connections
     radex_config_file = config.config_file(db_init_filename='database.ini', section='radex_fit_results')
@@ -106,13 +111,12 @@ if __name__ == '__main__':
 
     # Filter the observed data to contain only those species that we can use
     # (normally limited by those with Radex data)
-    filtered_data = workerfunctions.filter_data(
-        observed_data, relevant_species)
+    filtered_data = workerfunctions.filter_data(observed_data, relevant_species)
     
     # Begin by looping through all of the observed sources 
     # and start by creating a database for each entry
     physical_conditions = []
-    for obs in filtered_data[6:7]:
+    for obs in filtered_data[:1]:
         
         if (len(obs["species"]) >= 2 and "SIO" in obs["species"]) or \
                 (len(obs["species"]) >= 2 and "SO" in obs["species"]) or \
@@ -171,10 +175,10 @@ if __name__ == '__main__':
             
             # Determine estimates of what the physical conditions should be
             physical_conditions.append(inference.param_constraints(obs, sio_data, so_data))
-        
+            
             # Empty flags to signify whether molecules are present
             # Assune False by default
-            sio_flag, so_flag, ocs_flag, h2cs_flag = False, False, False, False
+            sio_flag, so_flag, h2cs_flag, ocs_flag = False, False, False, False
 
             pos = []
 
@@ -247,7 +251,7 @@ if __name__ == '__main__':
                 column_names = ["temp", "dens"] + ["column_density_{0}".format(spec) for spec in obs["species"]]
 
                 # Read the database to retrieve the data
-                chains = db.get_radex_chains(
+                chains = db.get_chains(
                     db_pool=db_radex_pool, 
                     table=obs["source"], 
                     column_names=column_names
@@ -278,8 +282,7 @@ if __name__ == '__main__':
                 file_out_walk = "{0}/radex-plots/new/walks/walk_{1}.pdf".format(DIREC, obs["source"])
                 c = ChainConsumer() 
                 c.add_chain(chain, parameters=plot_params, walkers=nWalkers)
-                c.configure(color_params="posterior", cloud=True, usetex=True,
-                            summary=False, sigmas=[0, 1, 2, 3])
+                c.configure(color_params="posterior", usetex=True, summary=False, sigmas=[0, 1, 2, 3])
                 fig = c.plotter.plot(filename=file_out, display=False)
 
                 fig_walks = c.plotter.plot_walks(filename=file_out_walk, display=False, plot_posterior=True)
@@ -295,5 +298,6 @@ if __name__ == '__main__':
 
                     os.remove(file_out)
                     os.remove(file_out_walk)
+            
     pool.close()
 

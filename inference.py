@@ -37,8 +37,8 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
         elif spec == "H2CS" and observed_data["transitions"][spec_indx][2] != str(1):
             continue # Not concerned with the para transition 
 
-        dv = mean([abs(float(linewidth)) for linewidth in observed_data["linewidths"]])
-        # dv = abs(observed_data["linewidths"][spec_indx]) # Some linewidths are -ve
+        # dv = mean([abs(float(linewidth)) for linewidth in observed_data["linewidths"]])
+        dv = abs(observed_data["linewidths"][spec_indx]) # Some linewidths are -ve
         transition = observed_data["transitions"][spec_indx]
 
         # Write the radex input file
@@ -53,6 +53,9 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
             capture_output=True, 
             check=True
         )  
+        
+        # shell_output is in bytes, so decode and split to array
+        shell_output = shell_output.stdout.decode("ascii").split()
 
         # This block ensures that the output file exists before attempting to read it
         while not os.path.exists(output_path):
@@ -63,6 +66,10 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
             radex_output = read_radex_output(spec, transition, output_path)
         else:
             raise ValueError("%s isn't a file!" % output_path)
+
+        # # Check for warnings
+        # if "Warning" in shell_output:
+        #     radex_output["rj_flux"] = np.inf
 
         # Determine the flux density
         trial_data['rj_flux'].append(radex_output["rj_flux"])
@@ -93,14 +100,43 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     # Convert to time
     t_diss = (dlength/(vs*1e5))/(60*60*24*365)
 
+    file_name = "phase1-n{0:.6E}".format(initial_dens)
+
+    phase1 = {
+        "phase1_out_file": file_name,
+        "initialDens": 1e2,
+        "finalDens": initial_dens,
+        "finalTime": 2e7,
+        "rout": workerfunctions.get_r_out(initial_dens),
+        "switch": 1,
+        "phase": 1,
+        "collapse": 1,
+        "readAbunds": 0,
+        "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
+        "outputFile": "{0}/UCLCHEM/output/start/full_output_{1}.dat".format(DIREC, file_name)
+    }
+
+    phase2 = {
+        "initialDens": 2*initial_dens,
+        "finalDens": initial_dens,
+        "finalTime": t_diss,
+        "vs": vs,
+        "rout": workerfunctions.get_r_out(initial_dens),
+        "switch": 0,
+        "phase": 2,
+        "readAbunds": 1,
+        "desorb": 1,
+        "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
+        "outputFile": "{0}/UCLCHEM/output/data/v{1:.6E}n{2:.6E}.dat".format(DIREC, vs, initial_dens)
+    }
+
     # Run the UCLCHEM model up to the dissipation length time analogue
     print("Running UCLCHEM")
-    shock_model = workerfunctions.run_uclchem(vs, initial_dens, t_diss, observed_data["species"], DIREC)
+    shock_model = workerfunctions.run_uclchem(phase1, phase2, observed_data["species"], DIREC)
 
     # Plot the UCLCHEM plots
-    filename = "{0}/UCLCHEM/output/data/v{1:.6E}n{2:.6E}.dat".format(DIREC, vs, initial_dens)
     plotfile = "{0}/UCLCHEM-plots/v{1:.6E}n{2:.6E}.png".format(DIREC, vs, initial_dens)
-    workerfunctions.plot_uclchem(filename, plotfile, observed_data["species"])
+    workerfunctions.plot_uclchem(shock_model, observed_data["species"], plotfile)
 
     # Average the quantities across the dissipation region
     # (i.e. the time that we've evolved the model for)
@@ -190,7 +226,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
 
 # Function to write the input to run Radex
 def write_radex_input(spec, ns, tkin, nh2, N, dv, input_path, output_path, RADEX_PATH, f_min, f_max):
-    tbg=2.73
+    tbg=100.0
     # Open the text file that constitutes Radex's input file
     infile = open(input_path, 'w')
     infile.write('{0}/data/{1}.dat\n'.format(RADEX_PATH,spec.lower()))  # Molecular data file
@@ -257,6 +293,14 @@ def read_radex_output(spec, transition, output_path):
                 except ValueError:
                     print("Potential Radex saturation")
                     radex_output["rj_flux"] = np.inf
+                
+                # Further check to ensure that nothing is negative
+                for word in words[2:]:
+                    if float(word) < 0:
+                        print("Potential Radex saturation")
+                        radex_output["E_up"] = np.inf
+                        radex_output["wav"] = np.inf
+                        radex_output["rj_flux"] = np.inf
             
     return radex_output
 
@@ -264,7 +308,7 @@ def read_radex_output(spec, transition, output_path):
 # prior probability function
 def ln_radex_prior(x):
     #temp
-    if x[0] < 100 or x[0] > 2500:
+    if x[0] < 60 or x[0] > 1000:
         return False
     #dens (log space)
     elif x[1] < 2 or x[1] > 8:
@@ -313,9 +357,10 @@ def ln_likelihood_radex(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH
             observed_data['source_rj_flux_error']
         )
 
-        if trial_data['rj_flux'] == np.inf:
+        if chi == np.inf:
             print("Radex has potentially saturated")
             trial_data['rj_flux'] = "Infinity"
+            return -np.inf
 
         # Put the data in to a dictionary for easier reference when storing
         data = {
@@ -450,6 +495,7 @@ def param_constraints(observed_data, sio_data, so_data):
         rj = rj_flux(
             observed_data["source_flux_dens_Jy"][indx], 
             observed_data["transition_freqs"][indx], 
+            observed_data["beams"][indx],
             observed_data["linewidths"][indx]
         )
 
@@ -490,27 +536,32 @@ def param_constraints(observed_data, sio_data, so_data):
     return physical_conditions
 
 
-def rj_flux(source_flux_dens_Jy, transition_freq, linewidth):
+def rj_flux(source_flux_dens_Jy, transition_freq, num_beams, linewidth):
 
     # Constants
     k = 1.38064852e-23  # kg m2 s-2 K-1
+    h = 6.62607015e-34  # kg m2 s-1
+    c = 3e8 # m/s
 
     # Determine the beam solid angle
     d = 2.42e22  #  Distance to Sgr A* in cm
     
-    # angular size of x and y dimensions of beam in radians
+    # Angular size of x and y dimensions of beam in radians
     theta_x, theta_y = 0.37*4.84814e-6, 0.31*4.84814e-6 
     
-    # source area and solid angle
-    source_area = 4*np.pi*(theta_x*d)*(theta_y*d)  # small angle approx
-    solid_angle = source_area/(d**2)
-
+    # Determine the beam solid angle
+    beam_solid_angle = ((np.pi*theta_x*theta_y)/(4*np.log(2))) # Gaussian beam solid angle
+    
+    # Convert to total solid angle covered by observation
+    solid_angle = beam_solid_angle*num_beams
+    
     # Determine the Rayleigh-Jeans flux in K
-    radiant_flux = (source_flux_dens_Jy*1e-26)/solid_angle
-    flux_K = ((3e8**2)*radiant_flux) / (2*(transition_freq**2)*k)
+    radiant_flux = (source_flux_dens_Jy*1e-26)/solid_angle # W m^2 Hz^-1 sr^-1
+    # flux_K = ((3e8**2)*radiant_flux) / (2*(transition_freq**2)*k)
+    flux_K = ((c**2)/(2*k*transition_freq**2))*radiant_flux
     
     # Integrated flux in K km/s
-    int_flux_K = flux_K*linewidth
+    int_flux_K = flux_K*(linewidth)
 
     return {
         "rj_flux": flux_K,
@@ -531,12 +582,11 @@ def reset_dict():
 
 
 def delete_radex_io(species, DIREC):
-    for spec in species:
-        input_filelist = glob.glob(os.path.join("{0}/radex-input/{1}/".format(DIREC, spec), "*.inp"))
-        output_filelist = glob.glob(os.path.join("{0}/radex-output/{1}/".format(DIREC, spec), "*.out"))
-        for inp, outp in zip(input_filelist, output_filelist):
-            os.remove(inp)
-            os.remove(outp)
+    input_filelist = glob.glob(os.path.join("{0}/radex-input/{1}/".format(DIREC, species), "*.inp"))
+    output_filelist = glob.glob(os.path.join("{0}/radex-output/{1}/".format(DIREC, species), "*.out"))
+    for inp, outp in zip(input_filelist, output_filelist):
+        os.remove(inp)
+        os.remove(outp)
 
 
 def delete_uclchem_io(DIREC):
