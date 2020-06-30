@@ -4,15 +4,15 @@ import sys
 # This is so that the code can execute from a directory
 # above the UCLCHEM directory
 sys.path.insert(1, "{0}/UCLCHEM/".format(os.getcwd()))
+import uclchem
 sys.path.insert(1, "{0}/UCLCHEM/scripts/".format(os.getcwd()))
+import plotfunctions
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 import databasefunctions as db
 import inference
-import uclchem
-import plotfunctions
 
 
 def parse_data(data, db_pool, db_bestfit_pool):
@@ -46,6 +46,7 @@ def parse_data(data, db_pool, db_bestfit_pool):
 
     # Extract the columns from the data and insert in to data list
     for indx, entry in enumerate(data[1:]):  # data[0] is the header row
+        print(entry)
         source_name = entry[0]  # The source name
         num_beams = float(entry[3])  #  The number of beams in the observation
         species = entry[4][0:entry[4].find(" ")].upper() # The molecule of interest
@@ -171,26 +172,25 @@ def run_uclchem(phase1, phase2, species, DIREC):
 
     # Check if phase 1 exists (as n is the only important factor here)
     try:
-        open("{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, phase1["phase1_out_file"]))
+        open("{0}".format(phase1["abundFile"]))
     except FileNotFoundError:
-        uclchem.general(
+        uclchem.wrap.run_model_to_file(
             phase1,
             species
         )
     finally:
         #Run UCLCHEM
-        uclchem.general(
+        uclchem.wrap.run_model_to_file(
             phase2,
             species,
         )
     
         print("UCLCHEM run complete")
 
-        times, dens, temp, abundances = plotfunctions.read_uclchem(
-            "{0}/UCLCHEM/output/data/v{1:.6E}n{2:.6E}.dat".format(DIREC, phase2["vs"], phase2["initial_dens"]), species)
+        times, dens, temp, abundances = plotfunctions.read_uclchem("{0}".format(phase2["outputFile"]), species)
     
         # Determine the H column density through the shock
-        coldens = [phase2["r_out"]*(3e18)*n_i for n_i in dens]
+        coldens = [phase2["rout"]*(3e18)*n_i for n_i in dens]
 
         return {
             "times": times,
@@ -210,7 +210,7 @@ def plot_uclchem(model, species, plotfile):
     H_coldens = [cloud_size*b for b in model["dens"]]
 
     # Set up the plot    
-    fig, ax = plt.subplots(3, figsize=(8, 30))
+    fig, ax = plt.subplots(3, figsize=(8, 8))
 
     # Twin the last axis
     ax2 = ax[2].twinx()
@@ -247,7 +247,7 @@ def plot_uclchem(model, species, plotfile):
     fig.savefig(plotfile)
 
     # Close plot
-    plt.close()
+    # plt.close()
 
     return 
 

@@ -91,7 +91,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     }
 
     # Unpack the parameters
-    vs, initial_dens = params[0], params[1]
+    vs, initial_dens, b_field, crir, isrf = params[0], params[1], params[2], params[3], params[4]
 
     # Determine the dissipation length and identify
     # the point that it begins (max_temp_indx)
@@ -99,16 +99,18 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
 
     # Convert to time
     t_diss = (dlength/(vs*1e5))/(60*60*24*365)
-
+    
     file_name = "phase1-n{0:.6E}".format(initial_dens)
 
     phase1 = {
-        "phase1_out_file": file_name,
+        "initialTemp": 10,
         "initialDens": 1e2,
         "finalDens": initial_dens,
         "finalTime": 2e7,
         "rout": workerfunctions.get_r_out(initial_dens),
-        "switch": 1,
+        "switch": 0,
+        "fr": 1.0,
+        "desorb": 0,
         "phase": 1,
         "collapse": 1,
         "readAbunds": 0,
@@ -117,26 +119,31 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     }
 
     phase2 = {
+        "initialTemp": 10,
         "initialDens": 2*initial_dens,
         "finalDens": initial_dens,
-        "finalTime": t_diss,
+        "finalTime": 1e2*t_diss,
         "vs": vs,
         "rout": workerfunctions.get_r_out(initial_dens),
         "switch": 0,
-        "phase": 2,
-        "readAbunds": 1,
+        "zeta": crir,
+        "radfield": isrf,
+        "fr": 0.0,
         "desorb": 1,
+        "phase": 2,
+        "collapse": 0,
+        "readAbunds": 1,
         "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
-        "outputFile": "{0}/UCLCHEM/output/data/v{1:.6E}n{2:.6E}.dat".format(DIREC, vs, initial_dens)
+        "outputFile": "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.2}.dat".format(DIREC, vs, np.log10(initial_dens))
     }
 
     # Run the UCLCHEM model up to the dissipation length time analogue
     print("Running UCLCHEM")
     shock_model = workerfunctions.run_uclchem(phase1, phase2, observed_data["species"], DIREC)
 
-    # Plot the UCLCHEM plots
-    plotfile = "{0}/UCLCHEM-plots/v{1:.6E}n{2:.6E}.png".format(DIREC, vs, initial_dens)
-    workerfunctions.plot_uclchem(shock_model, observed_data["species"], plotfile)
+    # # Plot the UCLCHEM plots
+    # plotfile = "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.2}z{3:.2E}r{4:.2E}B{5:.2E}.dat".format(DIREC, vs, np.log10(initial_dens), crir, isrf, b_field)
+    # workerfunctions.plot_uclchem(shock_model, observed_data["species"], plotfile)
 
     # Average the quantities across the dissipation region
     # (i.e. the time that we've evolved the model for)
@@ -157,7 +164,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     trial_data["resolved_n"] = n
     
     for spec_indx, spec in enumerate(observed_data["species"]):    
-        print(spec_indx)
+        
         # Store the species
         trial_data['species'].append(spec)
 
@@ -204,6 +211,9 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
             check=True
         ) 
 
+        # shell_output is in bytes, so decode and split to array
+        shell_output = shell_output.stdout.decode("ascii").split()
+
         # This block ensures that the output file exists before attempting to read it
         while not os.path.exists(output_path):
             time.sleep(1)
@@ -220,7 +230,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
 
         # Append the radex output data to the trial_data dictionary
         trial_data['rj_flux'].append(radex_output["rj_flux"])
-    
+
     return trial_data
 
 
@@ -324,10 +334,19 @@ def ln_radex_prior(x):
 # prior probability function 
 def ln_shock_prior(x):
     # velocity
-    if x[0]<10 or x[0]>30:
+    if x[0]<30 or x[0]>80:
         return False
     # density (log space)
-    elif x[1]<3 or x[1]>5:
+    elif x[1]<3 or x[1]>7:
+        return False
+    # B-field
+    elif x[2]<1 or x[2]>3:
+        return False
+    # Cosmic ray ionisation rate
+    elif x[3]<1 or x[3]>3:
+        return False
+    # Radiation field
+    elif x[4]<1 or x[4]>3:
         return False
     else:
         return True
@@ -393,8 +412,8 @@ def ln_likelihood_radex(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH
 def ln_likelihood_shock(x, observed_data, bestfit_db_connection, DIREC, RADEX_PATH):
 
     # Pack the parameters in to the y array for emcee
-    # 0 is vs, 1 is n (initial density)
-    y = [x[0], 10**x[1]]
+    # 0 is vs, 1 is n (initial density), 2 is B-field, 3 is crir and 4 is rad field
+    y = [x[0], 10**x[1], 10**x[2], 10**x[3], 10**x[4]]
 
     # Checks to see whether the randomly selected values of x are within
     # the desired range using ln_shock_prior
@@ -429,6 +448,7 @@ def ln_likelihood_shock(x, observed_data, bestfit_db_connection, DIREC, RADEX_PA
         }
 
         print("Inserting the chain data (and other quantities) in to the database")
+        
         # Save the best fit data for each species
         db.insert_shock_data(
             db_pool=bestfit_db_connection,
@@ -495,7 +515,7 @@ def param_constraints(observed_data, sio_data, so_data):
         rj = rj_flux(
             observed_data["source_flux_dens_Jy"][indx], 
             observed_data["transition_freqs"][indx], 
-            observed_data["beams"][indx],
+            observed_data["beams"],
             observed_data["linewidths"][indx]
         )
 

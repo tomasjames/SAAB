@@ -6,6 +6,10 @@ from multiprocessing import Pool
 import psycopg2
 import sys
 import subprocess as sp
+import time
+
+sys.path.insert(1, "{0}/UCLCHEM/scripts/".format(os.getcwd()))
+import plotfunctions
 
 #from astropy import units as u
 from decimal import Decimal
@@ -23,11 +27,19 @@ import databasefunctions as db
 import inference
 import workerfunctions
 
-def param_select():
-    vs = random.uniform(10, 30)
-    initial_dens = random.uniform(3, 5)
+def param_select(params):
+    if params['vs']:
+        params['vs'] = round(random.uniform(30, 80), 1)
+    if params['initial_dens']:
+        params['initial_dens'] = round(random.uniform(3, 7), 2)
+    if params['B_field']:
+        params['B_field'] = round(random.uniform(1, 3), 1) # B-field in micro gauss
+    if params['crir']:
+        params['crir'] = round(random.uniform(1, 3), 1) # Cosmic ray ionisation rate (zeta in UCLCHEM)
+    if params['isrf']:
+        params['isrf'] = round(random.uniform(1, 5), 1) # Interstellar radiation field  (radfield in UCLCHEM)
 
-    return vs, initial_dens
+    return params
 
 
 # Define constants
@@ -81,17 +93,16 @@ if __name__ == '__main__':
     
     # Filter the observed data to contain only those species that we can use
     # (normally limited by those with Radex data)
-    filtered_data = workerfunctions.filter_data(
-        observed_data, relevant_species)
+    filtered_data = workerfunctions.filter_data(observed_data, relevant_species)
 
-    nWalkers = 4 # Number of random walkers to sample parameter space
-    nDim = 2 # Number of dimensions within the parameters
+    nWalkers = 10 # Number of random walkers to sample parameter space
+    nDim = 5 # Number of dimensions within the parameters
     nSteps = int(1e2) # Number of steps per walker
     
     #Set up MPI Pool
-    pool = Pool(4)
+    # pool = Pool(4)
 
-    for obs in filtered_data[6:7]:
+    for obs in filtered_data:
         if (len(obs["species"]) >= 2 and "SIO" in obs["species"]) or \
                 (len(obs["species"]) >= 2 and "SO" in obs["species"]) or \
             (len(obs["species"]) >= 2 and "OCS" in obs["species"]) or \
@@ -122,6 +133,9 @@ if __name__ == '__main__':
                     id SERIAL PRIMARY KEY,
                     vs REAL NOT NULL,
                     dens REAL NOT NULL,
+                    B_field REAL NOT NULL,
+                    crir REAL NOT NULL,
+                    isrf REAL NOT NULL
                 );
                 """.format(obs["source"]),
             )
@@ -148,20 +162,32 @@ if __name__ == '__main__':
             db.create_table(db_pool=db_bestfit_pool, commands=bestfit_commands)
             
             # Determine the number of dimensions
-            nDim = 2
             print("nDim={0}".format(nDim))
 
             # Define the column names for saving to the database
-            column_names = ["vs", "dens"] + ["column_density_{0}".format(spec) for spec in obs["species"]]
+            # column_names = ["vs", "dens"] + ["column_density_{0}".format(spec) for spec in obs["species"]]
+            column_names = ["vs", "dens"]
 
             sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_shock,
-                args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), pool=pool)
+                args=(obs, db_bestfit_pool, DIREC, RADEX_PATH))
             pos = []
 
             # Select the parameters
             for i in range(nWalkers):
-                vs, initial_dens = param_select()
-                pos.append([vs, initial_dens])
+                params = param_select({
+                    'vs': True,
+                    'initial_dens': True,
+                    'B_field': True,
+                    'crir': True,
+                    'isrf': True,
+                })
+
+                # Iterate through those lists to find entries that
+                # are still marked as False (and not required)
+                pos_list = [x for x in params.values() if x != False]
+
+                # Append the correct params to the params list
+                pos.append(pos_list)
 
             print(obs["source"])
 
@@ -171,21 +197,48 @@ if __name__ == '__main__':
                 sampler.reset() # Reset the chain
                 print("Running mcmc")
                 pos, prob, state = sampler.run_mcmc(pos, nBreak, progress=False) #start from where we left off previously 
-
-                for data in observed_data:
-                    # Delete the Radex and UCLCHEM input and output files
-                    inference.delete_radex_io(data["species"], DIREC)
-                    inference.delete_uclchem_io(DIREC)
                 
                 #chain is organized as chain[walker, step, parameter(s)]
                 chain = np.array(sampler.chain[:, :, :])
                 for i in range(0, nWalkers):
                     for j in range(0, nBreak):
                         store = []
+                        chain_results = chain[i][j] 
                         for k in range(0, nDim):
-                            store.append(chain[i][j][k])
-                            print(store)
+                            store.append(chain_results[k])                        
+                        print("store={0}".format(store))
                         db.insert_shock_chain_data(db_pool=db_pool, table=obs["source"], chain=store)
+
+                        # Plot the UCLCHEM plots
+                        vs, initial_dens, b_field, crir, isrf = chain_results[0], chain_results[1], chain_results[2], chain_results[3], chain_results[4]
+                        uclchem_file = "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.2}.dat".format(DIREC, vs, initial_dens)
+
+                        # Block to ensure file exists before continuing
+                        while not os.path.exists(uclchem_file):
+                            time.sleep(1)
+                            print("Waiting for {0} to complete".format(uclchem_file))
+                        if os.path.isfile(uclchem_file):
+                            # read file
+                            times, dens, temp, abundances = plotfunctions.read_uclchem(uclchem_file, obs["species"])
+                        else:
+                            raise ValueError("%s isn't a file!" % uclchem_file)
+
+
+                        shock_model = {
+                            "times": times,
+                            "dens": dens,
+                            "temp": temp,
+                            "abundances": abundances
+                        }
+
+                        plotfile = "{0}/UCLCHEM-plots/v{1:.2}n1e{2:.2}z{3:.2E}r{4:.2E}B{5:.2E}.png".format(
+                            DIREC, vs, initial_dens, crir, isrf, b_field)
+                        workerfunctions.plot_uclchem(
+                            shock_model, obs["species"], plotfile)
+
+                # Delete the Radex and UCLCHEM input and output files
+                inference.delete_radex_io(obs["species"], DIREC)
+                inference.delete_uclchem_io(DIREC)
 
                 sampler.reset()
             '''    
