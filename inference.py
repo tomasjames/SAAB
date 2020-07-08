@@ -100,10 +100,9 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     # Convert to time
     t_diss = (dlength/(vs*1e5))/(60*60*24*365)
     
-    file_name = "phase1-n{0:.6E}".format(initial_dens)
+    file_name = "phase1-n{0:.2E}".format(initial_dens)
 
     phase1 = {
-        "initialTemp": 10,
         "initialDens": 1e2,
         "finalDens": initial_dens,
         "finalTime": 2e7,
@@ -119,10 +118,9 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     }
 
     phase2 = {
-        "initialTemp": 10,
         "initialDens": 2*initial_dens,
         "finalDens": initial_dens,
-        "finalTime": 1e2*t_diss,
+        "finalTime": 10*t_diss,
         "vs": vs,
         "rout": workerfunctions.get_r_out(initial_dens),
         "switch": 0,
@@ -142,8 +140,8 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     shock_model = workerfunctions.run_uclchem(phase1, phase2, observed_data["species"], DIREC)
 
     # # Plot the UCLCHEM plots
-    # plotfile = "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.2}z{3:.2E}r{4:.2E}B{5:.2E}.dat".format(DIREC, vs, np.log10(initial_dens), crir, isrf, b_field)
-    # workerfunctions.plot_uclchem(shock_model, observed_data["species"], plotfile)
+    plotfile = "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.2}z{3:.2E}r{4:.2E}B{5:.2E}.png".format(DIREC, vs, np.log10(initial_dens), crir, isrf, b_field)
+    workerfunctions.plot_uclchem(shock_model, observed_data["species"], plotfile)
 
     # Average the quantities across the dissipation region
     # (i.e. the time that we've evolved the model for)
@@ -236,7 +234,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
 
 # Function to write the input to run Radex
 def write_radex_input(spec, ns, tkin, nh2, N, dv, input_path, output_path, RADEX_PATH, f_min, f_max):
-    tbg=100.0
+    tbg=75.0
     # Open the text file that constitutes Radex's input file
     infile = open(input_path, 'w')
     infile.write('{0}/data/{1}.dat\n'.format(RADEX_PATH,spec.lower()))  # Molecular data file
@@ -557,28 +555,17 @@ def param_constraints(observed_data, sio_data, so_data):
 
 
 def rj_flux(source_flux_dens_Jy, transition_freq, num_beams, linewidth):
+    # Define the major and minor half-power beam widths
+    theta_maj, theta_min = 0.37, 0.31
 
-    # Constants
-    k = 1.38064852e-23  # kg m2 s-2 K-1
-    h = 6.62607015e-34  # kg m2 s-1
-    c = 3e8 # m/s
+    # Convert source_flux_dens_Jy to mJy/beam (source_flux_dens_Jy = Jy/beam)
+    I = source_flux_dens_Jy*1e3
 
-    # Determine the beam solid angle
-    d = 2.42e22  #  Distance to Sgr A* in cm
-    
-    # Angular size of x and y dimensions of beam in radians
-    theta_x, theta_y = 0.37*4.84814e-6, 0.31*4.84814e-6 
-    
-    # Determine the beam solid angle
-    beam_solid_angle = ((np.pi*theta_x*theta_y)/(4*np.log(2))) # Gaussian beam solid angle
-    
-    # Convert to total solid angle covered by observation
-    solid_angle = beam_solid_angle*num_beams
-    
-    # Determine the Rayleigh-Jeans flux in K
-    radiant_flux = (source_flux_dens_Jy*1e-26)/solid_angle # W m^2 Hz^-1 sr^-1
-    # flux_K = ((3e8**2)*radiant_flux) / (2*(transition_freq**2)*k)
-    flux_K = ((c**2)/(2*k*transition_freq**2))*radiant_flux
+    # Convert the transition frequency to GHz
+    transition_freq = transition_freq/1e9
+
+    # Convert the flux from mJy/beam to K (from https://science.nrao.edu/facilities/vla/proposing/TBconv)
+    flux_K = 1.222e3*(I)/((transition_freq**2)*(theta_maj)*(theta_min))
     
     # Integrated flux in K km/s
     int_flux_K = flux_K*(linewidth)
