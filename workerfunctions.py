@@ -1,7 +1,4 @@
-<<<<<<< HEAD
 import io
-=======
->>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 import os
 import sys
 # insert at 1, 0 is the script path (or '' in REPL)
@@ -18,7 +15,6 @@ import numpy as np
 import databasefunctions as db
 import inference
 
-<<<<<<< HEAD
 # For the redirect stdout and stederr
 from contextlib import contextmanager,redirect_stderr,redirect_stdout
 from os import devnull
@@ -31,8 +27,6 @@ def supress_stdout(func):
                 func(*a, **ka)
     return wrapper
 
-=======
->>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 
 def parse_data(data, db_pool, db_bestfit_pool):
     """
@@ -69,16 +63,11 @@ def parse_data(data, db_pool, db_bestfit_pool):
         source_name = entry[0]  # The source name
         num_beams = float(entry[3])  #  The number of beams in the observation
         species = entry[4][0:entry[4].find(" ")].upper() # The molecule of interest
-<<<<<<< HEAD
         if species == "SO":
             transitions = "7_8--6_7"
         else:
             transitions = entry[4][entry[4].find(" ")+1:].replace("–", "--").replace(
                 "(", "_").replace(")", "").replace(",", "_")  # The transition of the molecule
-=======
-        transitions = entry[4][entry[4].find(" ")+1:].replace("–", "--").replace(
-            "(", "_").replace(")", "").replace(",", "_")  # The transition of the molecule
->>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
         source_flux_dens_Jy = (float(entry[5][0:entry[5].find("±")])/1e3) #  The observed flux density (Jy)
         source_flux_dens_error_Jy = (float(entry[5][entry[5].find("±")+1:])/1e3)  # The observed flux error (Jy)
         linewidths = abs(float(entry[7])*1e3)  # The linewidth (m/s)
@@ -94,29 +83,16 @@ def parse_data(data, db_pool, db_bestfit_pool):
         else:
             transition_freq = np.nan
 
-<<<<<<< HEAD
-=======
-        print(num_beams)
-        
->>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
         # Convert flux from Jy to Rayleigh-Jeans estimate in K
         rj_equiv = inference.rj_flux(
             source_flux_dens_Jy,
             transition_freq,
-<<<<<<< HEAD
-=======
-            num_beams,
->>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
             linewidths/1e3
         )
         
         rj_equiv_error = inference.rj_flux(
             source_flux_dens_error_Jy,
             transition_freq,
-<<<<<<< HEAD
-=======
-            num_beams,
->>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
             linewidths/1e3
         )
 
@@ -204,35 +180,17 @@ def get_r_out(n):
     
     return r_out
 
-<<<<<<< HEAD
-
-=======
->>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 def run_uclchem(phase1, phase2, species, DIREC):
 
     # Check if phase 1 exists (as n is the only important factor here)
     try:
         open("{0}".format(phase1["abundFile"]))
     except FileNotFoundError:
-<<<<<<< HEAD
         uclchem.wrap.run_model_to_file(phase1,species)
     finally:
         #Run UCLCHEM
         uclchem.wrap.run_model_to_file(phase2,species)
 
-=======
-        uclchem.wrap.run_model_to_file(
-            phase1,
-            species
-        )
-    finally:
-        #Run UCLCHEM
-        uclchem.wrap.run_model_to_file(
-            phase2,
-            species,
-        )
-    
->>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
         print("UCLCHEM run complete")
 
         times, dens, temp, abundances = plotfunctions.read_uclchem("{0}".format(phase2["outputFile"]), species)
@@ -300,10 +258,6 @@ def plot_uclchem(model, species, plotfile):
     return 
 
 
-<<<<<<< HEAD
-=======
-'''
->>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 def read_shock_data(filename):
     a = open(filename).read()
     a = a.split('\n')
@@ -333,10 +287,6 @@ def read_shock_data(filename):
                 N.append(float(bits[-2].replace('D', 'E')))
 
     return time, dens, temp, vel, av, N
-<<<<<<< HEAD
-=======
-'''
->>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 
 
 def resolved_quantity(density, measure, t):
@@ -350,10 +300,6 @@ def resolved_quantity(density, measure, t):
     return quantity
 
 
-<<<<<<< HEAD
-=======
-'''
->>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 def time_distance_transform(vel, times):
     # Transform time in to distance (with 0 based array to account for the fact that
     # distance begins from 0)
@@ -363,10 +309,6 @@ def time_distance_transform(vel, times):
         distance.append((vel[i]*1e5)*(times[i] - times[i-1]) * (60*60*24*365) + distance[i-1])
 
     return distance
-<<<<<<< HEAD
-=======
-'''
->>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 
 
 def reset_data_dict():
