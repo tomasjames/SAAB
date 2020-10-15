@@ -9,3 +9,5 @@ chains*
 *.numbers
 *.txt
 UCLCHEM
+.DS_Store
+__pycache__/*

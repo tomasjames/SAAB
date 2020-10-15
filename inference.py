@@ -44,7 +44,7 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
         # Write the radex input file
         input_path = '{0}/radex-input/{1}/n{2:E}T{3}N{4:E}.inp'.format(DIREC, spec, n, T, N)
         output_path = '{0}/radex-output/{1}/n{2:E}T{3}N{4:E}.out'.format(DIREC, spec, n, T, N)
-        write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=290, f_max=360)
+        write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=303, f_max=305)
 
         #Run radex
         shell_output = sp.run(
@@ -100,7 +100,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     # Convert to time
     t_diss = (dlength/(vs*1e5))/(60*60*24*365)
     
-    file_name = "phase1-n{0:.2E}z{1:.2}r{2:.2}b{3:.2}".format(initial_dens, crir, isrf, b_field)
+    file_name = "n{0:.2E}z{1:.2}r{2:.2}b{3:.2}".format(initial_dens, crir, isrf, b_field)
 
     phase1 = {
         "initialDens": 1e2,
@@ -136,7 +136,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
         "collapse": 0,
         "readAbunds": 1,
         "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
-        "outputFile": "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.2}z{3:.2}r{4:.2}b{5:.2}.dat".format(DIREC, vs, np.log10(initial_dens), crir, isrf, b_field)
+        "outputFile": "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.2}z{3:.2}r{4:.2}b{5:.2}.dat".format(DIREC, vs, initial_dens, crir, isrf, b_field)
     }
 
     print("Running UCLCHEM")
@@ -208,7 +208,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
         output_path = '{0}/radex-output/{1}/n{2:E}T{3}N{4:E}.out'.format(DIREC, spec, n, T, N)
         
         # Write the radex input file
-        write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=290, f_max=360)
+        write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=303, f_max=305)
 
         print("Running radex")
         # Run radex
@@ -244,7 +244,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
 
 # Function to write the input to run Radex
 def write_radex_input(spec, ns, tkin, nh2, N, dv, input_path, output_path, RADEX_PATH, f_min, f_max):
-    tbg=75.0
+    tbg=2.73
     # Open the text file that constitutes Radex's input file
     infile = open(input_path, 'w')
     infile.write('{0}/data/{1}.dat\n'.format(RADEX_PATH,spec.lower()))  # Molecular data file
@@ -268,7 +268,7 @@ def read_radex_output(spec, transition, output_path):
         "temp": 0, 
         "dens": 0, 
         "E_up": 0, 
-        "wav": 0, 
+        "rest_freq": 0, 
         "rj_flux": 0
     }
 
@@ -305,7 +305,7 @@ def read_radex_output(spec, transition, output_path):
             # define the line transition)
             if (transition == str(words[0]+words[1]+words[2])):  
                 radex_output["E_up"] = float(words[3]) # Extract the energy of the transition
-                radex_output["wav"] = float(words[5]) # Extract the wavelength of the transition
+                radex_output["rest_freq"] = float(words[4]) # Extract the wavelength of the transition
                 try: 
                     radex_output["rj_flux"] = float(words[-5]) # Extract the Rayleigh-Jeans flux of the transition in K
                 except ValueError:
@@ -317,7 +317,7 @@ def read_radex_output(spec, transition, output_path):
                     if float(word) < 0:
                         print("Potential Radex saturation")
                         radex_output["E_up"] = np.inf
-                        radex_output["wav"] = np.inf
+                        radex_output["rest_freq"] = np.inf
                         radex_output["rj_flux"] = np.inf
             
     return radex_output
@@ -387,7 +387,6 @@ def ln_likelihood_radex(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH
         if chi == np.inf:
             print("Radex has potentially saturated")
             trial_data['rj_flux'] = "Infinity"
-            return -np.inf
 
         # Put the data in to a dictionary for easier reference when storing
         data = {
@@ -462,7 +461,7 @@ def ln_likelihood_shock(x, observed_data, bestfit_db_connection, DIREC, RADEX_PA
             "source_rj_flux_error": observed_data['source_rj_flux_error'],
             "chi": chi
         }
-
+        
         print("Inserting the chain data (and other quantities) in to the database")
         
         # Save the best fit data for each species
@@ -471,7 +470,7 @@ def ln_likelihood_shock(x, observed_data, bestfit_db_connection, DIREC, RADEX_PA
             table="{0}_bestfit_conditions".format(observed_data["source"]), 
             data=data
         )
-
+        
         return -0.5*chi
     
     else:
@@ -607,6 +606,8 @@ def reset_dict():
 
 
 def delete_radex_io(species, DIREC):
+    if species == "H2CS":
+        species = "pH2CS"
     input_filelist = glob.glob(os.path.join("{0}/radex-input/{1}/".format(DIREC, species), "*.inp"))
     output_filelist = glob.glob(os.path.join("{0}/radex-output/{1}/".format(DIREC, species), "*.out"))
     for inp, outp in zip(input_filelist, output_filelist):

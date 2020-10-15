@@ -57,11 +57,10 @@ filtered_data = workerfunctions.filter_data(
     observed_data, ["SIO", "SO", "OCS", "H2CS"])
 
 # Read the image data from Farhad
-fits_table_filename = 'data/images/HCN.fits'
-observation = fits.open(fits_table_filename)[0]
-image_data = observation.data[0]
+fits_table_filename = 'data/images/plw.fits'
+observation = fits.open(fits_table_filename)[1]
+image_data = observation.data
 w = wcs.WCS(observation.header)
-w = w.dropaxis(-1) # Drops the 3rd axis (not needed)
 
 # Determine size of image from pixel coords and use to determine pixel sizes
 origin_x_pos, origin_y_pos = w.wcs_pix2world(0, 0, 1)
@@ -73,24 +72,18 @@ pixel_height = sgrA_dist*((max_y_pos - origin_y_pos)/len(image_data[0]))
 ############################## Plot the data ############################
 # Initialize figure
 fig, ax = plt.subplots(1, figsize=(9, 12))
-
-# Overlay RA and Dec
-overlay = ax.get_coords_overlay('fk5')
-overlay.grid(color='white', ls='dotted')
-overlay[0].set_axislabel('Right Ascension (J2000)')
-overlay[1].set_axislabel('Declination (J2000)')
 # fig.subplots_adjust(left=0.1, bottom=0.1)
 
 # Plot the data
-plot = ax.imshow(image_data, interpolation="nearest",
-                 origin="lower", cmap="bone", norm=Normalize(vmin=-2.0, vmax=8.0))
-cbaxes = fig.add_axes([0.2, 0.04, 0.6, 0.02])
-fig.colorbar(plot, orientation="horizontal", cax=cbaxes, label="Flux density [Jy/beam km/s]")
-ax.set_xlim([1200, 2800])
-ax.set_ylim([500, 3500])
+plot = ax.imshow(np.log10(image_data), interpolation="nearest", origin="lower", cmap="bone")
+# cbaxes = fig.add_axes([0.2, 0.04, 0.6, 0.02])
+fig.colorbar(plot, orientation="horizontal", label="Flux density [Jy/beam km/s]")
+# ax.set_xlim([1200, 2800])
+# ax.set_ylim([500, 3500])
 # ax.set_xlabel("Right Ascension (J2000)")
 # ax.set_ylabel("Declination (J2000)")
 
+'''
 # Add the grid
 g = ax.grid(alpha=0.25, color='white')
 
@@ -121,8 +114,7 @@ for indx, entry in enumerate(data[1:]):  # data[0] is the header row
 
     # Determine size of beam in cm
     source_radial_extent = float(entry[3])*beam_size
-    # Converts arcsec to deg
-    source_size = sgrA_dist*(source_radial_extent/3600)
+    source_size = sgrA_dist*(beam_size/3600) # Converts arcsec to deg 
     source_pixels = source_size/pixel_height
 
     # Set up chain
@@ -159,7 +151,7 @@ for indx, entry in enumerate(data[1:]):  # data[0] is the header row
 
     # Only need to pull out the coordinates of each source 
     coords = SkyCoord(
-        ra=Angle('17h45m{0}s'.format(entry[1])), dec=Angle('-29d00m{0}s'.format(entry[2])), frame='fk5')
+        ra=Angle('17h45m{0}s'.format(entry[1])), dec=Angle('-29d00m{0}s'.format(entry[2])), frame='fk4')
     
     # Convert to pixels
     pix_coords = w.all_world2pix(coords.ra.deg, coords.dec.deg, 1)
@@ -246,7 +238,7 @@ axins1.set_ylim(y1, y2)  # apply the y-limits
 plt.yticks(visible=False)
 plt.xticks(visible=False)
 mark_inset(ax, axins1, loc1=4, loc2=2, fc="none", ec="0.5")
-'''
+
 x1, x2, y1, y2 = 1400, 1800, 2000, 4300  # specify the limits
 axins2.set_xlim(x1, x2)  # apply the x-limits
 axins2.set_ylim(y1, y2)  # apply the y-limits
@@ -255,4 +247,4 @@ plt.xticks(visible=False)
 mark_inset(ax, axins2, loc1=4, loc2=3, fc="none", ec="0.5")
 '''
 # plt.tight_layout()
-fig.savefig('data/images/HCN_T_mean.pdf')
+fig.savefig('data/images/dust_plw.pdf')

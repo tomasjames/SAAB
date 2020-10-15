@@ -56,15 +56,14 @@ def param_select(params):
 # Define constants
 DIREC = os.getcwd()
 RADEX_PATH = "{0}/../Radex".format(DIREC)
-#RADEX_PATH = "/Users/tjames/Documents/Codes/Radex"
 
-print_results = True
+plot_results = True
 
 if __name__ == '__main__':
 
     # Define emcee specific parameters
     nWalkers = 100  # Number of random walkers to sample parameter space
-    nSteps = int(1e2)  # Number of steps per walker
+    nSteps = int(4e2)  # Number of steps per walker
 
     #Set up MPI Pool
     pool = Pool(8)
@@ -126,11 +125,12 @@ if __name__ == '__main__':
             '''
             # Checks to see whether the tables exists; if so, delete it
             if db.does_table_exist(db_pool=db_radex_pool, table=obs["source"]):
-                continue
-                #db.drop_table(db_pool=db_radex_pool, table=obs["source"])
+                #continue
+                db.drop_table(db_pool=db_radex_pool, table=obs["source"])
             if db.does_table_exist(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"])):
-                #db.drop_table(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"]))
-                continue 
+                db.drop_table(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"]))
+                #continue 
+
             # Store the column density string
             all_column_str = "" # Empty string to hold full string once complete
             for spec_indx, spec in enumerate(obs["species"]):
@@ -245,7 +245,7 @@ if __name__ == '__main__':
 
                 sampler.reset()
             '''
-            if print_results:
+            if plot_results:
                 print("Moving to plotting routine")
                 print("Getting data from database")
 
@@ -271,6 +271,21 @@ if __name__ == '__main__':
 
                 # Throw away the first 20% or so of samples so as to avoid considering initial burn-in period
                 chain = np.array(chains[int(chain_length*0.2):])
+
+                # Throw away any chains with high variance that could indicate they're stuck
+                for chunk_indx in range(0, len(chain)-1, nSteps):
+                    chunk = chain[chunk_indx:chunk_indx+nSteps]
+
+                    # Check variance
+                    if np.var(chunk[:,1]) < 2.5 or np.var(chunk[:,2]) < 3.0 or np.var(chunk[:,3]) < 3.0:
+                        print("Removing data...")
+                        # chain = np.delete(chain, np.linspace(chunk_indx, chunk_indx+nSteps, nSteps+1, dtype=int), 0)
+                        chain[np.linspace(chunk_indx, chunk_indx+nSteps-1, nSteps, dtype=int)] = False
+
+                # Delete all False entries
+                mask = (chain != False)
+                masked_chain = np.ma.MaskedArray(chain, mask=~mask)
+                chain = np.ma.compress_rows(masked_chain)
 
                 print(obs["species"])
 
@@ -300,6 +315,6 @@ if __name__ == '__main__':
 
                     os.remove(file_out)
                     os.remove(file_out_walk)
-            
+                break            
     pool.close()
 
