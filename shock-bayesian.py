@@ -8,9 +8,12 @@ import sys
 import subprocess as sp
 import time
 
+<<<<<<< HEAD
 # Disables numpy from being able to spawn parallel processes itself
 os.environ["OMP_NUM_THREADS"] = "1"
 
+=======
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 sys.path.insert(1, "{0}/UCLCHEM/scripts/".format(os.getcwd()))
 import plotfunctions
 
@@ -32,6 +35,7 @@ import workerfunctions
 
 def param_select(params):
     if params['vs']:
+<<<<<<< HEAD
         params['vs'] = round(random.uniform(15, 30), 1)
     if params['initial_dens']:
         params['initial_dens'] = round(random.uniform(3, 5.5), 2)
@@ -41,14 +45,30 @@ def param_select(params):
         params['crir'] = round(random.uniform(1, 2), 1) # Cosmic ray ionisation rate (zeta in UCLCHEM)
     if params['isrf']:
         params['isrf'] = round(random.uniform(1, 2), 1) # Interstellar radiation field  (radfield in UCLCHEM)
+=======
+        params['vs'] = round(random.uniform(30, 80), 1)
+    if params['initial_dens']:
+        params['initial_dens'] = round(random.uniform(3, 7), 2)
+    if params['B_field']:
+        params['B_field'] = round(random.uniform(1, 3), 1) # B-field in micro gauss
+    if params['crir']:
+        params['crir'] = round(random.uniform(1, 3), 1) # Cosmic ray ionisation rate (zeta in UCLCHEM)
+    if params['isrf']:
+        params['isrf'] = round(random.uniform(1, 5), 1) # Interstellar radiation field  (radfield in UCLCHEM)
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 
     return params
 
 
 # Define constants
 DIREC = os.getcwd()
+<<<<<<< HEAD
 RADEX_PATH = "{0}/../Radex".format(DIREC)
 #RADEX_PATH = "/Users/tjames/Documents/Codes/Radex"
+=======
+# RADEX_PATH = "{0}/../Radex".format(DIREC)
+RADEX_PATH = "/Users/tjames/Documents/Codes/Radex"
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 
 
 
@@ -78,8 +98,13 @@ if __name__ == '__main__':
     relevant_species = ["SIO", "SO", "OCS", "H2CS"]
 
     # Declare the database connections
+<<<<<<< HEAD
     config_file = config.config_file(db_init_filename='database_archi.ini', section='shock_fit_results')
     bestfit_config_file = config.config_file(db_init_filename='database_archi.ini', section='shock_bestfit_conditions')
+=======
+    config_file = config.config_file(db_init_filename='database.ini', section='shock_fit_results')
+    bestfit_config_file = config.config_file(db_init_filename='database.ini', section='bestfit_conditions')
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 
     # Set up the connection pools
     db_pool = db.dbpool(config_file)
@@ -98,18 +123,27 @@ if __name__ == '__main__':
     # (normally limited by those with Radex data)
     filtered_data = workerfunctions.filter_data(observed_data, relevant_species)
 
+<<<<<<< HEAD
     nWalkers = 100 # Number of random walkers to sample parameter space
+=======
+    nWalkers = 10 # Number of random walkers to sample parameter space
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
     nDim = 5 # Number of dimensions within the parameters
     nSteps = int(1e2) # Number of steps per walker
     
     #Set up MPI Pool
+<<<<<<< HEAD
     pool = Pool(12)
+=======
+    # pool = Pool(4)
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 
     for obs in filtered_data:
         if (len(obs["species"]) >= 2 and "SIO" in obs["species"]) or \
                 (len(obs["species"]) >= 2 and "SO" in obs["species"]) or \
             (len(obs["species"]) >= 2 and "OCS" in obs["species"]) or \
                 (len(obs["species"]) >= 2 and "H2CS" in obs["species"]):
+<<<<<<< HEAD
             '''
             # Checks to see whether the tables exists; if so, delete it
             if db.does_table_exist(db_pool=db_pool, table=obs["source"]):
@@ -118,6 +152,14 @@ if __name__ == '__main__':
             if db.does_table_exist(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"])):
                 #db.drop_table(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"]))
                 continue            
+=======
+
+            # Checks to see whether the tables exists; if so, delete it
+            if db.does_table_exist(db_pool=db_pool, table=obs["source"]):
+                db.drop_table(db_pool=db_pool, table=obs["source"])
+            if db.does_table_exist(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"])):
+                db.drop_table(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"]))
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
             
             # Store the column density string
             all_column_str = ""  #  Empty string to hold full string once complete
@@ -141,7 +183,11 @@ if __name__ == '__main__':
                     B_field REAL NOT NULL,
                     crir REAL NOT NULL,
                     isrf REAL NOT NULL
+<<<<<<< HEAD
      	           );
+=======
+                );
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
                 """.format(obs["source"]),
             )
             
@@ -153,12 +199,16 @@ if __name__ == '__main__':
                     transitions TEXT [] NOT NULL,
                     vs REAL NOT NULL,
                     dens REAL NOT NULL,
+<<<<<<< HEAD
                     b_field REAL NOT NULL,
                     crir REAL NOT NULL,
                     isrf REAL NOT NULL,
                     column_density DOUBLE PRECISION [] NOT NULL,
                     resolved_T REAL NOT NULL,
                     resolved_n REAL NOT NULL,
+=======
+                    column_density DOUBLE PRECISION [] NOT NULL,
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
                     radex_flux DOUBLE PRECISION [] NOT NULL,
                     source_flux DOUBLE PRECISION [] NOT NULL,
                     source_flux_error DOUBLE PRECISION [] NOT NULL,
@@ -176,10 +226,17 @@ if __name__ == '__main__':
 
             # Define the column names for saving to the database
             # column_names = ["vs", "dens"] + ["column_density_{0}".format(spec) for spec in obs["species"]]
+<<<<<<< HEAD
             column_names = ["vs", "dens", "crir", "isrf"]
 
             sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_shock,
                 args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), pool=pool)
+=======
+            column_names = ["vs", "dens"]
+
+            sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_shock,
+                args=(obs, db_bestfit_pool, DIREC, RADEX_PATH))
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
             pos = []
 
             # Select the parameters
@@ -215,6 +272,7 @@ if __name__ == '__main__':
                         store = []
                         chain_results = chain[i][j] 
                         for k in range(0, nDim):
+<<<<<<< HEAD
                             
                             store.append(chain_results[k])                        
                         print("store={0}".format(store))
@@ -224,6 +282,15 @@ if __name__ == '__main__':
                         vs, initial_dens, b_field, crir, isrf = chain_results[0], chain_results[1], chain_results[2], chain_results[3], chain_results[4]
                         uclchem_file = "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.2}.dat".format(DIREC, vs, initial_dens)
                         print("Plotting {0}".format(uclchem_file))
+=======
+                            store.append(chain_results[k])                        
+                        print("store={0}".format(store))
+                        db.insert_shock_chain_data(db_pool=db_pool, table=obs["source"], chain=store)
+
+                        # Plot the UCLCHEM plots
+                        vs, initial_dens, b_field, crir, isrf = chain_results[0], chain_results[1], chain_results[2], chain_results[3], chain_results[4]
+                        uclchem_file = "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.2}.dat".format(DIREC, vs, initial_dens)
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 
                         # Block to ensure file exists before continuing
                         while not os.path.exists(uclchem_file):
@@ -247,7 +314,11 @@ if __name__ == '__main__':
                             DIREC, vs, initial_dens, crir, isrf, b_field)
                         workerfunctions.plot_uclchem(
                             shock_model, obs["species"], plotfile)
+<<<<<<< HEAD
                         
+=======
+
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
                 # Delete the Radex and UCLCHEM input and output files
                 inference.delete_radex_io(obs["species"], DIREC)
                 inference.delete_uclchem_io(DIREC)
@@ -263,10 +334,14 @@ if __name__ == '__main__':
                 table=obs["source"], 
                 column_names=[
                     "vs",
+<<<<<<< HEAD
                     "dens",
                     "b_field", 
                     "crir", 
                     "isrf"
+=======
+                    "initial_dens"
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
                 ]
             )
 
@@ -279,23 +354,36 @@ if __name__ == '__main__':
             #Name params for chainconsumer (i.e. axis labels)
             param1 = "v$_{s}$ / km s$^{-1}$"
             param2 = "log(n$_{H}$) / cm$^{-3}$"
+<<<<<<< HEAD
             param3 = "B$_{0}$ / G"
             param4 = "$\zeta$ / s$^{-1}$"
             param5 = "I$_{r}$"
+=======
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 
             #Chain consumer plots posterior distributions and calculates
             #maximum likelihood statistics as well as Geweke test
             file_out = "{0}/radex-plots/new/corner_{1}.png".format(DIREC, obs["source"])
             file_out_walk = "{0}/radex-plots/new/walks/walk_{1}.png".format(DIREC, obs["source"])
             c = ChainConsumer() 
+<<<<<<< HEAD
             try:
                 c.add_chain(chain, parameters=[param1,param2,param3,param4,param5], walkers=nWalkers)
             except AssertionError:
                 continue
+=======
+            c.add_chain(chain, parameters=[param1,param2], walkers=nWalkers)
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
             c.configure(color_params="posterior", cloud=True, usetex=True, summary=False) 
             fig = c.plotter.plot(filename=file_out, display=False)
             # fig.set_size_inches(6 + fig.get_size_inches())
             # summary = c.analysis.get_summary()
 
             fig_walks = c.plotter.plot_walks(filename=file_out_walk, display=False, plot_posterior=True)
+<<<<<<< HEAD
     pool.close() 
+=======
+            '''
+    pool.close()
+    
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635

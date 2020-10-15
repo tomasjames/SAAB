@@ -55,18 +55,33 @@ def param_select(params):
 
 # Define constants
 DIREC = os.getcwd()
+<<<<<<< HEAD
 RADEX_PATH = "{0}/../Radex".format(DIREC)
 
 plot_results = True
+=======
+# RADEX_PATH = "{0}/../Radex".format(DIREC)
+RADEX_PATH = "/Users/tjames/Documents/Codes/Radex"
+
+print_results = True
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 
 if __name__ == '__main__':
 
     # Define emcee specific parameters
+<<<<<<< HEAD
     nWalkers = 100  # Number of random walkers to sample parameter space
     nSteps = int(4e2)  # Number of steps per walker
 
     #Set up MPI Pool
     pool = Pool(8)
+=======
+    nWalkers = 20  # Number of random walkers to sample parameter space
+    nSteps = int(1e2)  # Number of steps per walker
+
+    #Set up MPI Pool
+    pool = Pool(12)
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 
     # Define the datafile
     datafile = "{0}/data/tabula-sio_intratio.csv".format(DIREC)
@@ -92,8 +107,13 @@ if __name__ == '__main__':
     relevant_species = ["SIO", "SO", "H2CS", "OCS"]
 
     # Declare the database connections
+<<<<<<< HEAD
     radex_config_file = config.config_file(db_init_filename='database_archi.ini', section='radex_fit_results')
     bestfit_config_file = config.config_file(db_init_filename='database_archi.ini', section='bestfit_conditions')
+=======
+    radex_config_file = config.config_file(db_init_filename='database.ini', section='radex_fit_results')
+    bestfit_config_file = config.config_file(db_init_filename='database.ini', section='bestfit_conditions')
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 
     # Set up the connection pools
     db_radex_pool = db.dbpool(radex_config_file)
@@ -115,11 +135,17 @@ if __name__ == '__main__':
     # Begin by looping through all of the observed sources 
     # and start by creating a database for each entry
     physical_conditions = []
+<<<<<<< HEAD
     for obs in filtered_data:
+=======
+    for obs in filtered_data[:1]:
+        
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
         if (len(obs["species"]) >= 2 and "SIO" in obs["species"]) or \
                 (len(obs["species"]) >= 2 and "SO" in obs["species"]) or \
                     (len(obs["species"]) >= 2 and "OCS" in obs["species"]) or \
                         (len(obs["species"]) >= 2 and "H2CS" in obs["species"]):
+<<<<<<< HEAD
            
             print("source={0}".format(obs["source"])) 
             '''
@@ -131,6 +157,15 @@ if __name__ == '__main__':
                 db.drop_table(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"]))
                 #continue 
 
+=======
+            
+            # Checks to see whether the tables exists; if so, delete it
+            if db.does_table_exist(db_pool=db_radex_pool, table=obs["source"]):
+                db.drop_table(db_pool=db_radex_pool, table=obs["source"])
+            if db.does_table_exist(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"])):
+                db.drop_table(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"]))
+            
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
             # Store the column density string
             all_column_str = "" # Empty string to hold full string once complete
             for spec_indx, spec in enumerate(obs["species"]):
@@ -244,8 +279,13 @@ if __name__ == '__main__':
                         db.insert_radex_chain_data(db_pool=db_radex_pool, table=obs["source"], chain=store, column_names=column_names)
 
                 sampler.reset()
+<<<<<<< HEAD
             '''
             if plot_results:
+=======
+            
+            if print_results:
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
                 print("Moving to plotting routine")
                 print("Getting data from database")
 
@@ -272,6 +312,7 @@ if __name__ == '__main__':
                 # Throw away the first 20% or so of samples so as to avoid considering initial burn-in period
                 chain = np.array(chains[int(chain_length*0.2):])
 
+<<<<<<< HEAD
                 # Throw away any chains with high variance that could indicate they're stuck
                 for chunk_indx in range(0, len(chain)-1, nSteps):
                     chunk = chain[chunk_indx:chunk_indx+nSteps]
@@ -287,6 +328,8 @@ if __name__ == '__main__':
                 masked_chain = np.ma.MaskedArray(chain, mask=~mask)
                 chain = np.ma.compress_rows(masked_chain)
 
+=======
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
                 print(obs["species"])
 
                 # Name params for chainconsumer (i.e. axis labels)
@@ -315,6 +358,10 @@ if __name__ == '__main__':
 
                     os.remove(file_out)
                     os.remove(file_out_walk)
+<<<<<<< HEAD
                 break            
+=======
+            
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
     pool.close()
 

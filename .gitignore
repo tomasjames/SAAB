@@ -1,6 +1,10 @@
+backup/
+data/
+__pycache__/*
 radex-input/*
 radex-output/*
 radex-plots/*
+UCLCHEM-plots/*
 radex.log
 data/*
 chains*

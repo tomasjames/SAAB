@@ -148,6 +148,7 @@ axins.add_collection(p_inset1)
 axins1.add_collection(p_inset2)
 
 # Sets the ranges on the collections to their correct min and max values
+<<<<<<< HEAD
 p.set_array(np.array(mean_n))
 p.set_clim([np.ma.min(mean_n), np.ma.max(mean_n)])
 
@@ -156,6 +157,16 @@ p_inset1.set_clim([np.ma.min(mean_n), np.ma.max(mean_n)])
 
 p_inset2.set_array(np.array(mean_n))
 p_inset2.set_clim([np.ma.min(mean_n), np.ma.max(mean_n)])
+=======
+p.set_array(np.array(mean_N_SO))
+p.set_clim([np.ma.min(mean_N_SO), np.ma.max(mean_N_SO)])
+
+p_inset1.set_array(np.array(mean_N_SO))
+p_inset1.set_clim([np.ma.min(mean_N_SO), np.ma.max(mean_N_SO)])
+
+p_inset2.set_array(np.array(mean_N_SO))
+p_inset2.set_clim([np.ma.min(mean_N_SO), np.ma.max(mean_N_SO)])
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635
 
 # Adds the colour bar
 plt.colorbar(p, ax=ax, label="N$_{SO, mean}$ [cm$^{-2}$]")
@@ -179,4 +190,8 @@ plt.xticks(visible=False)
 mark_inset(ax, axins1, loc1=4, loc2=2, fc="none", ec="0.5")
 
 # plt.tight_layout()
+<<<<<<< HEAD
 fig.savefig('data/images/20cm_n_mean.pdf')
+=======
+fig.savefig('data/images/20cm_N_SO_mean.pdf')
+>>>>>>> 72c633029c2759fbe561733dd1cc02fc81b03635

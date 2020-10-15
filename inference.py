@@ -233,7 +233,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
             raise ValueError("%s isn't a file!" % output_path)
 
         # Catch any radex saturation problems
-        if radex_output["rj_flux"] < 0 or radex_output["rj_flux"] > 100:
+        if radex_output["rj_flux"] < 0 or radex_output["rj_flux"] > 10:
             radex_output["rj_flux"] = np.inf
 
         # Append the radex output data to the trial_data dictionary
@@ -440,9 +440,7 @@ def ln_likelihood_shock(x, observed_data, bestfit_db_connection, DIREC, RADEX_PA
         if trial_data['rj_flux'] == np.inf:
             print("Radex has potentially saturated")
             trial_data['rj_flux'] = "Infinity"
-
             return -np.inf
-
 
         # Put the data in to a dictionary for easier reference when storing
         data = {
@@ -530,7 +528,6 @@ def param_constraints(observed_data, sio_data, so_data):
         rj = rj_flux(
             observed_data["source_flux_dens_Jy"][indx], 
             observed_data["transition_freqs"][indx], 
-            observed_data["beams"],
             observed_data["linewidths"][indx]
         )
 
