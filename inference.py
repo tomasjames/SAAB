@@ -37,6 +37,10 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
         elif spec == "H2CS" and observed_data["transitions"][spec_indx][2] != str(1):
             continue # Not concerned with the para transition 
 
+        # Amends CH3OH transition 
+        if spec == "CH3OH":
+            spec = "a-CH3OH"
+
         # dv = mean([abs(float(linewidth)) for linewidth in observed_data["linewidths"]])
         dv = abs(observed_data["linewidths"][spec_indx]) # Some linewidths are -ve
         transition = observed_data["transitions"][spec_indx]
@@ -57,19 +61,8 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
         # shell_output is in bytes, so decode and split to array
         shell_output = shell_output.stdout.decode("ascii").split()
 
-        # This block ensures that the output file exists before attempting to read it
-        while not os.path.exists(output_path):
-            time.sleep(1)
-            print("Waiting for {0}".format(output_path))
-        if os.path.isfile(output_path):
-            # Read the radex output
-            radex_output = read_radex_output(spec, transition, output_path)
-        else:
-            raise ValueError("%s isn't a file!" % output_path)
-
-        # # Check for warnings
-        # if "Warning" in shell_output:
-        #     radex_output["rj_flux"] = np.inf
+        # Read the radex output
+        radex_output = read_radex_output(spec, transition, output_path)
 
         # Determine the flux density
         trial_data['rj_flux'].append(radex_output["rj_flux"])

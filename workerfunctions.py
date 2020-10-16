@@ -80,6 +80,8 @@ def parse_data(data, db_pool, db_bestfit_pool):
             transition_freq = 303.99326100*1e9
         elif species == "H2CS":
             transition_freq = 304.30774200*1e9
+        elif species == "CH3OH":
+            transition_freq = 304.20832400*1e9
         else:
             transition_freq = np.nan
 
@@ -182,17 +184,21 @@ def get_r_out(n):
 
 def run_uclchem(phase1, phase2, species, DIREC):
 
+    print("Running UCLCHEM")
     # Check if phase 1 exists (as n is the only important factor here)
     try:
+        print("Phase 1 already complete")
         open("{0}".format(phase1["abundFile"]))
     except FileNotFoundError:
+        print("Running phase 1")
         uclchem.wrap.run_model_to_file(phase1,species)
     finally:
+        print("Running phase 2")
         #Run UCLCHEM
         uclchem.wrap.run_model_to_file(phase2,species)
 
         print("UCLCHEM run complete")
-
+        print("Reading UCLCHEM output")
         times, dens, temp, abundances = plotfunctions.read_uclchem("{0}".format(phase2["outputFile"]), species)
     
         # Determine the H column density through the shock
