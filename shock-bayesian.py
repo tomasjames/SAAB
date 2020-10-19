@@ -75,7 +75,7 @@ if __name__ == '__main__':
     }
 
     # Declare the species that we're interested in
-    relevant_species = ["SIO", "SO", "OCS", "H2CS"]
+    relevant_species = ["SIO", "SO", "CH3OH", "OCS", "H2CS"]
 
     # Declare the database connections
     config_file = config.config_file(db_init_filename='database_archi.ini', section='shock_fit_results')
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     # Filter the observed data to contain only those species that we can use
     # (normally limited by those with Radex data)
     filtered_data = workerfunctions.filter_data(observed_data, relevant_species)
-
+    quit
     nWalkers = 100 # Number of random walkers to sample parameter space
     nDim = 5 # Number of dimensions within the parameters
     nSteps = int(1e2) # Number of steps per walker
@@ -114,11 +114,11 @@ if __name__ == '__main__':
             
             # Checks to see whether the tables exists; if so, delete it
             if db.does_table_exist(db_pool=db_pool, table=obs["source"]):
-                #db.drop_table(db_pool=db_pool, table=obs["source"])
-                continue
+                db.drop_table(db_pool=db_pool, table=obs["source"])
+                #continue
             if db.does_table_exist(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"])):
-                #db.drop_table(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"]))
-                continue            
+                db.drop_table(db_pool=db_bestfit_pool, table="{0}_bestfit_conditions".format(obs["source"]))
+                #continue            
             
             # Store the column density string
             all_column_str = ""  #  Empty string to hold full string once complete
@@ -173,12 +173,13 @@ if __name__ == '__main__':
             db.create_table(db_pool=db_bestfit_pool, commands=bestfit_commands)
             
             # Determine the number of dimensions
-            # print("nDim={0}".format(nDim))
+            print("nDim={0}".format(nDim))
 
             # Define the column names for saving to the database
             # column_names = ["vs", "dens"] + ["column_density_{0}".format(spec) for spec in obs["species"]]
-            column_names = ["vs", "dens", "crir", "isrf"]
+            column_names = ["vs", "dens", "b_field", "crir", "isrf"]
 
+            print("Running the emcee sampler")
             sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_shock,
                 args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), pool=pool)
             pos = []
@@ -220,23 +221,14 @@ if __name__ == '__main__':
                             store.append(chain_results[k])                        
                         print("store={0}".format(store))
                         db.insert_shock_chain_data(db_pool=db_pool, table=obs["source"], chain=store)
-
+                        ''' 
                         # Plot the UCLCHEM plots
                         vs, initial_dens, b_field, crir, isrf = chain_results[0], chain_results[1], chain_results[2], chain_results[3], chain_results[4]
                         uclchem_file = "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.2}z{3:.2}r{4:.2}b{5:.2}.dat".format(
                             DIREC, vs, initial_dens, crir, isrf, b_field)
-                        print("Plotting {0}".format(uclchem_file))
 
-                        # Block to ensure file exists before continuing
-                        while not os.path.exists(uclchem_file):
-                            time.sleep(1)
-                            print("Waiting for {0} to complete".format(uclchem_file))
-                        if os.path.isfile(uclchem_file):
-                            # read file
-                            times, dens, temp, abundances = plotfunctions.read_uclchem(uclchem_file, obs["species"])
-                        else:
-                            raise ValueError("%s isn't a file!" % uclchem_file)
-
+                        # read file
+                        times, dens, temp, abundances = plotfunctions.read_uclchem(uclchem_file, obs["species"])
 
                         shock_model = {
                             "times": times,
@@ -244,18 +236,13 @@ if __name__ == '__main__':
                             "temp": temp,
                             "abundances": abundances
                         }
-
-                        plotfile = "{0}/UCLCHEM-plots/v{1:.2}n1e{2:.2}z{3:.2E}r{4:.2E}B{5:.2E}.png".format(
-                            DIREC, vs, initial_dens, crir, isrf, b_field)
-                        workerfunctions.plot_uclchem(
-                            shock_model, obs["species"], plotfile)
-                        
+                        '''
                 # Delete the Radex and UCLCHEM input and output files
                 inference.delete_radex_io(obs["species"], DIREC)
                 inference.delete_uclchem_io(DIREC)
 
                 sampler.reset()
-             
+            '''    
             print("Moving to plotting routine")
             print("Getting data from database")
 
@@ -300,4 +287,6 @@ if __name__ == '__main__':
             # summary = c.analysis.get_summary()
 
             fig_walks = c.plotter.plot_walks(filename=file_out_walk, display=False, plot_posterior=True)
+        '''
     pool.close() 
+

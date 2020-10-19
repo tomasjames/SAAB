@@ -34,12 +34,18 @@ def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
         # 1 is the quantum number defining the ortho transition
         if spec == "H2CS" and observed_data["transitions"][spec_indx][2] == str(1):
             spec = "oH2CS"
+            # Ortho to para ratio (statistical value of 3:1)
+            o_p = 3/4
+            N = N*o_p
         elif spec == "H2CS" and observed_data["transitions"][spec_indx][2] != str(1):
             continue # Not concerned with the para transition 
 
         # Amends CH3OH transition 
         if spec == "CH3OH":
             spec = "a-CH3OH"
+            # E/A ratio (assume equal ratio according to Wirstrom et al)
+            e_a = 1/2
+            N = N*e_a
 
         # dv = mean([abs(float(linewidth)) for linewidth in observed_data["linewidths"]])
         dv = abs(observed_data["linewidths"][spec_indx]) # Some linewidths are -ve
@@ -226,6 +232,11 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
             raise ValueError("%s isn't a file!" % output_path)
 
         # Catch any radex saturation problems
+        try:
+            radex_output["rj_flux"] = float(radex_output["rj_flux"])
+        except ValueError:
+            radex_output["rj_flux"] = np.inf
+
         if radex_output["rj_flux"] < 0 or radex_output["rj_flux"] > 10:
             radex_output["rj_flux"] = np.inf
 
@@ -301,10 +312,11 @@ def read_radex_output(spec, transition, output_path):
                 radex_output["rest_freq"] = float(words[4]) # Extract the wavelength of the transition
                 try: 
                     radex_output["rj_flux"] = float(words[-5]) # Extract the Rayleigh-Jeans flux of the transition in K
+                    print("radex_output['rj_flux']={0}".format(radex_output["rj_flux"]))
                 except ValueError:
                     print("Potential Radex saturation")
                     radex_output["rj_flux"] = np.inf
-                
+                '''
                 # Further check to ensure that nothing is negative
                 for word in words[2:]:
                     if float(word) < 0:
@@ -312,7 +324,7 @@ def read_radex_output(spec, transition, output_path):
                         radex_output["E_up"] = np.inf
                         radex_output["rest_freq"] = np.inf
                         radex_output["rj_flux"] = np.inf
-            
+                '''
     return radex_output
 
 

@@ -199,8 +199,12 @@ def run_uclchem(phase1, phase2, species, DIREC):
 
         print("UCLCHEM run complete")
         print("Reading UCLCHEM output")
-        times, dens, temp, abundances = plotfunctions.read_uclchem("{0}".format(phase2["outputFile"]), species)
-    
+        data = plotfunctions.read_uclchem("{0}".format(phase2["outputFile"]))
+        times, dens, temp, abundances = list(data["Time"]), list(data["Density"]), list(data["gasTemp"]), []   
+
+        for spec in species:
+            abundances.append(data[spec])
+
         # Determine the H column density through the shock
         coldens = [phase2["rout"]*(3e18)*n_i for n_i in dens]
 
