@@ -28,7 +28,8 @@ with open("{0}/data/tabula-sio_intratio.csv".format(DIREC), newline='') as f:
 # Remove header row
 data.remove(data[0])
 
-source_names = np.array(data)[1:, 0]
+source_names = np.array(data)[0:, 0]
+source_names = np.char.upper(source_names)
 
 # Define line colour
 colour = "g"
@@ -37,59 +38,62 @@ colour = "g"
 for file in files:
     plot_file_name = file[file.index("src"):-4]
     source_name = plot_file_name[plot_file_name.index("_")+1:].upper()
-    # if source_name != "C1":
-    #     continue
-    nu, flux_density = np.loadtxt(file, skiprows=8, unpack=True)
+    if source_name == "3" or source_name == "5":
+        continue
+    x_vals, flux_density = np.loadtxt(file, skiprows=8, unpack=True)
+    print("source={0}".format(source_name))
     flux_density = flux_density*1e3 # Convert to mJy
-
-    model_nu = np.linspace(nu[0], nu[-1], len(nu))
-
+    
     # Get Marc's fit
     existing_sources_indx = [i for i, x in enumerate(list(source_names)) if x == source_name]
+    # existing_sources = data[existing_sources_indx[0]:existing_sources_indx[-1]]
 
-    plt.figure()
+    intensities = []
 
     for source_indx, source in enumerate(existing_sources_indx):
-        velocity = float(data[source][-3])
+        vel_lsr = float(data[source][-3])
         linewidth_kms = float(data[source][-2])
         peak_flux_density = float(data[source][-4][:data[source][-4].index("±")])
-        line_freq = nu[min(range(len(flux_density)), key=lambda i: abs(flux_density[i]-peak_flux_density))]
+        species = data[source][4]
+        print(species)
+        if species == "SiO 7–6":
+            line_freq = 303.92696000
+        if species == "OCS 25–24":
+            line_freq = 303.99326100
+        if species == "SO 8(7)–7(6)":
+            line_freq = 304.07784400
+        if species == "CH3OH 2(-1)–2(0)":
+            line_freq = 304.20834800
+        if species == "H2CS 9(1,9)–8(1,8)":
+            line_freq = 304.30774000
 
-        print(line_freq)
-
-        # Convert linewidth to frequency space
-        linewidth = abs(line_freq * (linewidth_kms/3e5))
-
-        # Fit Gaussian to data
-        lower_bound = (np.abs(nu - (line_freq - linewidth))).argmin()
-        upper_bound = (np.abs(nu - (line_freq + linewidth))).argmin()
-        m = models.Gaussian1D(amplitude=peak_flux_density, mean=line_freq, stddev=linewidth)
-
-        # Generate fit array for plotting
-        x = np.linspace(nu[upper_bound]+0.04, nu[lower_bound]-0.04, 101)
-        fit = m(x)
-
-        if source_indx == 0:
-            domain = [model_nu[-1], model_nu[lower_bound]-0.04]
-            prev_line_upper_bound = nu[upper_bound]+0.04
-            print(upper_bound)
-        elif source_indx == len(existing_sources_indx) - 1:
-            plt.plot([model_nu[upper_bound]+0.04, model_nu[0]], [0, 0], color=colour)
-            domain = [prev_line_upper_bound, nu[lower_bound]-0.04]
-        else:
-            domain = [prev_line_upper_bound, nu[lower_bound]-0.04]
-            prev_line_upper_bound = nu[upper_bound]+0.04
-        print(domain)
+        # Check to see whether file is in frequency or velocity space
+        if x_vals[0] > 0:
+            obs_freqs = x_vals
+            velocities = ((line_freq/obs_freqs) - 1.0)*3e5
+        elif x_vals[0] < 0:
+            velocities = x_vals
+            obs_freqs = line_freq/(((velocities)/3e5) + 1.0)
+            
+        # Get fraction of max intensity in each bin
+        fracs = np.exp(-4.0*np.log(2.0)*(((velocities-vel_lsr)**2.0)/(linewidth_kms**2)))
+        # Calculate model y axis
+        intensity = peak_flux_density*fracs 
         
-        plt.plot(domain, [0, 0], color=colour)
+        # Essentially merges two spectra to ensure continuous curve
+        if source_indx > 0:
+            for i in range(0, len(intensity)):
+                if intensity[i] > spectra[i]:
+                    spectra[i] = intensity[i]
+        else:
+            spectra = intensity
 
-        plt.plot(x, fit, color=colour)
+        plt.annotate(species, xy=(line_freq, peak_flux_density*1.04), xycoords="data", size=8)
 
-    # plt.plot(model_nu, np.linspace(0, 0, len(model_nu)), color=colour)
-    plt.plot(nu, flux_density, color="b", alpha=0.5, linewidth=0.4, label="Raw spectra")
+    plt.plot(obs_freqs, spectra, color=colour)
+    plt.plot(obs_freqs, flux_density, color="b",alpha=0.3, linewidth=0.4, label="Raw spectra")
+    plt.annotate(source_name, xy=(obs_freqs[-1], 0.95*np.max(flux_density)), xycoords="data", size=12)
     plt.xlabel("$\\nu$ (GHz)")
     plt.ylabel("Flux density (mJy/beam)")
-    # plt.annotate(source_name, (np.max(nu)*0.9997, np.max(flux_density)*0.98))
-    plt.savefig(
-        "{0}/data/sio_spectra/spectra/{1}.png".format(DIREC, plot_file_name))
+    plt.savefig("{0}/data/sio_spectra/spectra/{1}.png".format(DIREC, plot_file_name))
     plt.close()

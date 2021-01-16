@@ -24,9 +24,9 @@ def dbpool(db_params):
                 database=db_params["database"])
     
     if(db_pool):
-        print("Connection pool created successfully")
+        # print("Connection pool created successfully")
 
-    return db_pool
+        return db_pool
 
 
 def create_table(db_pool, commands):
@@ -110,6 +110,7 @@ def insert_data(db_pool, table, data):
     sql = """INSERT INTO {0} (id, species, transitions, temp, dens, column_density, radex_flux, source_flux, source_flux_error, chi_squared) VALUES ( DEFAULT, ARRAY {1}, ARRAY {2}, {3}, {4}, ARRAY {5}, ARRAY {6}, ARRAY {7}, ARRAY {8}, {9} );""".format(
         table, data["species"], data["transitions"], data["temp"], data["dens"], data["column_density"], data["rj_flux"], data["source_rj_flux"], data["source_rj_flux_error"], data["chi"])
     conn = None
+    #print("sql={0}".format(sql))
     try:
         # connect to the PostgreSQL server
         # Use getconn() to Get Connection from connection pool
@@ -179,6 +180,7 @@ def get_chains(db_pool, table, column_names):
         print("ERROR THROWN")
         print(error)
         rows = None
+        raise ValueError
     finally:
         if conn is not None:
             conn.close()

@@ -75,7 +75,7 @@ fig, ax = plt.subplots(1, figsize=(9, 12))
 # fig.subplots_adjust(left=0.1, bottom=0.1)
 
 # Plot the data
-plot = ax.imshow(np.log10(image_data), interpolation="nearest", origin="lower", cmap="bone")
+plot = ax.imshow(np.log10(image_data), interpolation="nearest",origin="lower", cmap="bone")
 # cbaxes = fig.add_axes([0.2, 0.04, 0.6, 0.02])
 fig.colorbar(plot, orientation="horizontal", label="Flux density [Jy/beam km/s]")
 # ax.set_xlim([1200, 2800])

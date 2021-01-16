@@ -72,6 +72,8 @@ def parse_data(data, db_pool, db_bestfit_pool):
         source_flux_dens_error_Jy = (float(entry[5][entry[5].find("±")+1:])/1e3)  # The observed flux error (Jy)
         linewidths = abs(float(entry[7])*1e3)  # The linewidth (m/s)
 
+        print("source_flux_dens_Jy={0}".format(source_flux_dens_Jy))
+
         if species == "SIO":
             transition_freq = 303.92696000*1e9
         elif species == "SO":
@@ -110,8 +112,8 @@ def parse_data(data, db_pool, db_bestfit_pool):
             data_storage['source_flux_dens_error_Jy'].append(source_flux_dens_error_Jy)
             data_storage['linewidths'].append(abs(linewidths)) # abs catches any -ve linewidths
             data_storage['transition_freqs'].append(transition_freq)
-            data_storage["source_rj_flux"].append(rj_equiv["rj_flux"])
-            data_storage["source_rj_flux_error"].append(rj_equiv_error["rj_flux"])
+            data_storage["source_rj_flux"].append(round(rj_equiv["rj_flux"], 3))
+            data_storage["source_rj_flux_error"].append(round(rj_equiv_error["rj_flux"], 6))
 
             # Store the data
             observed_data.append(data_storage)
@@ -123,8 +125,8 @@ def parse_data(data, db_pool, db_bestfit_pool):
             observed_data[source_indx-1]['source_flux_dens_Jy'].append(source_flux_dens_Jy)
             observed_data[source_indx-1]['source_flux_dens_error_Jy'].append(source_flux_dens_error_Jy)
             observed_data[source_indx-1]['linewidths'].append(linewidths)
-            observed_data[source_indx-1]["source_rj_flux"].append(rj_equiv["rj_flux"])
-            observed_data[source_indx-1]["source_rj_flux_error"].append(rj_equiv_error["rj_flux"])
+            observed_data[source_indx-1]["source_rj_flux"].append(round(rj_equiv["rj_flux"], 3))
+            observed_data[source_indx-1]["source_rj_flux_error"].append(round(rj_equiv_error["rj_flux"], 6))
             observed_data[source_indx-1]['transition_freqs'].append(transition_freq)
 
     return observed_data
@@ -149,6 +151,7 @@ def filter_data(data, species):
     filtered_data = [] # List to hold the resulting data
     for source in data: # Loop through the data
         if len(source["species"]) < 2:
+            print(source)
             continue
         diffs = list(set(source["species"]) - set(species)) # Find the differences between species in data and species of interest
         for unique in diffs: # Remove those unique elements found above
@@ -186,35 +189,32 @@ def run_uclchem(phase1, phase2, species, DIREC):
 
     print("Running UCLCHEM")
     # Check if phase 1 exists (as n is the only important factor here)
-    try:
-        print("Phase 1 already complete")
-        open("{0}".format(phase1["abundFile"]))
-    except FileNotFoundError:
-        print("Running phase 1")
-        uclchem.wrap.run_model_to_file(phase1,species)
-    finally:
-        print("Running phase 2")
-        #Run UCLCHEM
-        uclchem.wrap.run_model_to_file(phase2,species)
+    print("Running phase 1")
+    uclchem.wrap.run_model_to_file(phase1, species)
+        
+    print("Running phase 2")
+    print(phase2)
+    #Run UCLCHEM
+    uclchem.wrap.run_model_to_file(phase2, species)
 
-        print("UCLCHEM run complete")
-        print("Reading UCLCHEM output")
-        data = plotfunctions.read_uclchem("{0}".format(phase2["outputFile"]))
-        times, dens, temp, abundances = list(data["Time"]), list(data["Density"]), list(data["gasTemp"]), []   
+    print("UCLCHEM run complete")
+    print("Reading UCLCHEM output")
+    data = plotfunctions.read_uclchem("{0}".format(phase2["outputFile"]))
+    times, dens, temp, abundances = list(data["Time"]), list(data["Density"]), list(data["gasTemp"]), []   
 
-        for spec in species:
-            abundances.append(data[spec])
+    for spec in species:
+        abundances.append(data[spec])
 
-        # Determine the H column density through the shock
-        coldens = [phase2["rout"]*(3e18)*n_i for n_i in dens]
+    # Determine the H column density through the shock
+    coldens = [phase2["rout"]*(3e18)*n_i for n_i in dens]
 
-        return {
-            "times": times,
-            "dens": dens,
-            "temp": temp,
-            "abundances": abundances,
-            "H_coldens": coldens
-        }
+    return {
+        "times": times,
+        "dens": dens,
+        "temp": temp,
+        "abundances": abundances,
+        "H_coldens": coldens
+    }
 
 
 def plot_uclchem(model, species, plotfile):

@@ -20,6 +20,7 @@ import random
 import matplotlib.pyplot as plt
 
 import config as config
+import correlation
 import databasefunctions as db
 import inference
 import workerfunctions
@@ -35,7 +36,7 @@ def param_select(params):
         T = random.uniform(T_lower, 1000)
         params['temp'] = T
     if params['dens']:
-        dens = random.uniform(3, 7)
+        dens = random.uniform(4, 8)
         params['dens'] = dens
     if params['N_sio']:
         N_sio = random.uniform(12, 15)
@@ -44,13 +45,13 @@ def param_select(params):
         N_so = random.uniform(12, 15)
         params['N_so'] = N_so
     if params['N_ch3oh']:
-        N_ch3oh = random.uniform(12, 15)
+        N_ch3oh = random.uniform(13, 17)
         params['N_ch3oh'] = N_ch3oh
     if params['N_ocs']:
-        N_ocs = random.uniform(12, 16)
+        N_ocs = random.uniform(13, 16)
         params['N_ocs'] = N_ocs
     if params['N_h2cs']:
-        N_h2cs = random.uniform(12, 16)
+        N_h2cs = random.uniform(13, 16)
         params['N_h2cs'] = N_h2cs
 
     return params
@@ -65,11 +66,11 @@ plot_results = True
 if __name__ == '__main__':
 
     # Define emcee specific parameters
-    nWalkers = 100  # Number of random walkers to sample parameter space
-    nSteps = int(4e2)  # Number of steps per walker
+    nWalkers = 500  # Number of random walkers to sample parameter space
+    nSteps = int(1e4)  # Number of steps per walker
 
     #Set up MPI Pool
-    pool = Pool(8)
+    #pool = Pool(24)
 
     # Define the datafile
     datafile = "{0}/data/tabula-sio_intratio.csv".format(DIREC)
@@ -110,15 +111,15 @@ if __name__ == '__main__':
 
     # Parse the data to a dict list
     observed_data = workerfunctions.parse_data(data, db_radex_pool, db_bestfit_pool)
-
+    
     # Filter the observed data to contain only those species that we can use
     # (normally limited by those with Radex data)
     filtered_data = workerfunctions.filter_data(observed_data, relevant_species)
-    
+
     # Begin by looping through all of the observed sources 
     # and start by creating a database for each entry
     physical_conditions = []
-    for obs in filtered_data:
+    for obs_indx, obs in enumerate(filtered_data):
         if (len(obs["species"]) >= 2 and "SIO" in obs["species"]) or \
                 (len(obs["species"]) >= 2 and "SO" in obs["species"]) or \
                     (len(obs["species"]) >= 2 and "CH3OH" in obs["species"]) or \
@@ -126,8 +127,17 @@ if __name__ == '__main__':
                             (len(obs["species"]) >= 2 and "H2CS" in obs["species"]):
            
             print("source={0}".format(obs["source"])) 
-            
-            # Checks to see whether the tables exists; if so, delete it
+            #'''
+            #start_index = next((index for (index, d) in enumerate(filtered_data) if d["source"] == "L20"), None)
+            #if obs_indx < start_index:
+            #    continue
+            if obs["source"] == "L16" or obs["source"] == "L17":
+                print("Source is {}".format(obs["source"]))
+            else:
+                #print("Source is {}".format(obs["source"]))
+                continue
+            ''' 
+            #Checks to see whether the tables exists; if so, delete it
             if db.does_table_exist(db_pool=db_radex_pool, table=obs["source"]):
                 #continue
                 db.drop_table(db_pool=db_radex_pool, table=obs["source"])
@@ -151,7 +161,7 @@ if __name__ == '__main__':
                 """
                 CREATE TABLE IF NOT EXISTS {0} (
                     id SERIAL PRIMARY KEY,
-                    temp REAL NOT NULL,
+                    temp INTEGER NOT NULL,
                     dens REAL NOT NULL,
                     {1}
                 );
@@ -164,7 +174,7 @@ if __name__ == '__main__':
                     id SERIAL PRIMARY KEY,
                     species TEXT [] NOT NULL,
                     transitions TEXT [] NOT NULL,
-                    temp REAL NOT NULL,
+                    temp INTEGER NOT NULL,
                     dens REAL NOT NULL,
                     column_density DOUBLE PRECISION [] NOT NULL,
                     radex_flux DOUBLE PRECISION [] NOT NULL,
@@ -187,6 +197,9 @@ if __name__ == '__main__':
             sio_flag, so_flag, ch3oh_flag, h2cs_flag, ocs_flag = False, False, False, False, False
 
             pos = []
+
+            # Refine number of walkers
+            #nWalkers = (len(obs["species"]) + 2)*2
 
             # Determine which molecules are present and alter flags
             if "SIO" in obs["species"]:
@@ -226,31 +239,61 @@ if __name__ == '__main__':
             # Define the column names for saving to the database
             column_names = ["temp", "dens"] + ["column_density_{0}".format(spec) for spec in obs["species"]]
 
+            # Set up the backend
+            # Don't forget to clear it in case the file already exists
+            #filename = "{0}.h5".format(obs["source"])
+            #backend = mc.backends.HDFBackend(filename)
+            #backend.reset(nWalkers, nDim)
+
             # Run the sampler
             sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_radex, 
-                args=(obs, bestfit_config_file, DIREC, RADEX_PATH), pool=pool)
+                args=(obs, bestfit_config_file, DIREC, RADEX_PATH), pool=Pool(24))
 
             # Split the chain in to 100 chunks, each 1% of the total size and write out
             nBreak=int(nSteps/100)
-            for counter in range(0, nSteps):
+            for counter in range(nBreak):
                 sampler.reset() # Reset the chain
+
                 print("Running mcmc")
-                pos, prob, state = sampler.run_mcmc(pos, nBreak, progress=False) #start from where we left off previously 
+
+                pos, prob, state = sampler.run_mcmc(pos, nBreak, progress=True) #start from where we left off previously 
+
+                print("MCMC complete on counter {}".format(counter))                
+                print("Moving to file deletion")
 
                 for species in obs["species"]:
                     # Delete the Radex and UCLCHEM input and output files
                     inference.delete_radex_io(species, DIREC)
-                
+
                 #chain is organized as chain[walker, step, parameter(s)]
-                chain = np.array(sampler.chain[:, :, :])
+                #chain = np.array(sampler.chain[:, :, :])
+                chain = np.array(sampler.chain)
+
                 for i in range(0, nWalkers):
                     for j in range(0, nBreak):
-                        store = []
-                        for k in range(0, nDim):
-                            store.append(chain[i][j][k])
-                        db.insert_radex_chain_data(db_pool=db_radex_pool, table=obs["source"], chain=store, column_names=column_names)
+                        print("Inserting chain[{0}][{1}]".format(i, j))
+                        db.insert_radex_chain_data(db_pool=db_radex_pool, table=obs["source"], chain=chain[i][j], column_names=column_names)                   
 
-                sampler.reset()
+                if counter == 0:
+                    print("counter == 0")
+                    full_chain = np.vstack(chain)
+                else:
+                    print("Stacking chains")
+                    full_chain = np.concatenate((full_chain, np.vstack(chain)))
+
+                print("Checking convergence")
+                # Checks for convergence using ChainConsumer
+                c = ChainConsumer()
+                c.add_chain(full_chain, parameters=column_names, walkers=nWalkers)
+
+                # Convergence tests
+                gelman_rubin = c.diagnostic.gelman_rubin(threshold=0.15)
+                if gelman_rubin:
+                    print("Chains have converged")
+                    break
+                else:
+                    print("Chains have yet to converge")    
+
             '''
             if plot_results:
                 print("Moving to plotting routine")
@@ -275,26 +318,18 @@ if __name__ == '__main__':
                 # and catch any chains that might be 0 length
                 if chain_length == 0:
                     continue
+                
+                # Throw away the first 20% or so of samples so as to avoid considering initial burn-in period
+                chain = np.array(chains)
+
+                # Ensure chain is truncated to maximum chain length
+                #if obs["source"] == "G2":
+                #    chain = chain[:int(nWalkers*nSteps/10)]
+                #    continue
 
                 # Throw away the first 20% or so of samples so as to avoid considering initial burn-in period
+                #chain = chain[int(nWalkers*nSteps*0.1):]
                 chain = np.array(chains[int(chain_length*0.2):])
-
-                # Throw away any chains with high variance that could indicate they're stuck
-                for chunk_indx in range(0, len(chain)-1, nSteps):
-                    chunk = chain[chunk_indx:chunk_indx+nSteps]
-
-                    # Check variance
-                    if np.var(chunk[:,1]) < 2.5 or np.var(chunk[:,2]) < 3.0 or np.var(chunk[:,3]) < 3.0:
-                        print("Removing data...")
-                        # chain = np.delete(chain, np.linspace(chunk_indx, chunk_indx+nSteps, nSteps+1, dtype=int), 0)
-                        chain[np.linspace(chunk_indx, chunk_indx+nSteps-1, nSteps, dtype=int)] = False
-
-                # Delete all False entries
-                mask = (chain != False)
-                masked_chain = np.ma.MaskedArray(chain, mask=~mask)
-                chain = np.ma.compress_rows(masked_chain)
-
-                print(obs["species"])
 
                 # Name params for chainconsumer (i.e. axis labels)
                 plot_params = ["T [K]", "log(n$_{H}$) [cm$^{-3}$]"] + [
@@ -306,8 +341,16 @@ if __name__ == '__main__':
                 file_out_walk = "{0}/radex-plots/new/walks/walk_{1}.pdf".format(DIREC, obs["source"])
                 c = ChainConsumer() 
                 c.add_chain(chain, parameters=plot_params, walkers=nWalkers)
-                c.configure(color_params="posterior", usetex=True, summary=False, sigmas=[0, 1, 2, 3])
-                fig = c.plotter.plot(filename=file_out, display=False)
+
+                # Convergence tests
+                gelman_rubin = c.diagnostic.gelman_rubin(threshold=0.15)
+                if gelman_rubin:
+                    print("Chains have converged")
+                else:
+                    print("Chains have yet to converge")
+
+                c.configure(color_params="posterior", usetex=True, summary=False, bins=0.3, cloud=False, spacing=2.0, sigmas=np.linspace(0, 2, 3), plot_contour=True, bar_shade=[False]*len(plot_params))
+                fig = c.plotter.plot(filename=file_out, display=False,) #extents=[(60, 1000), (4, 7), (13, 15), (13, 15), (14, 17), (14, 15), (14, 15)])
 
                 fig_walks = c.plotter.plot_walks(filename=file_out_walk, display=False, plot_posterior=True)
                 plt.close()
@@ -322,7 +365,3 @@ if __name__ == '__main__':
 
                     os.remove(file_out)
                     os.remove(file_out_walk)
-                break  
-            '''          
-    pool.close()
-
