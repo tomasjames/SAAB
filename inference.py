@@ -137,120 +137,147 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
         "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
         "outputFile": "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.1}z1e{3:.1}r1e{4:.1}b1e{5:.1}.dat".format(DIREC, vs, initial_dens, crir, isrf, b_field)
     }
-
-    print("Running UCLCHEM")
     
     # Run the UCLCHEM model up to the dissipation length time analogue
     shock_model = workerfunctions.run_uclchem(phase1, phase2, observed_data["species"], DIREC)
-    
-    print("UCLCHEM model complete") 
+
+    while not os.path.exists(phase2["outputFile"]):
+        time.sleep(1)
+        print("Waiting for {0}".format(phase2["outputFile"]))
+    if os.path.isfile(phase2["outputFile"]):
+        print("UCLCHEM model {0} complete".format(phase2["outputFile"]))
+    else:
+        raise ValueError("%s isn't a file!" % phase2["outputFile"])    
 
     # # Plot the UCLCHEM plots
     #plotfile = "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.2}z{3:.2E}r{4:.2E}B{5:.2E}.png".format(DIREC, vs, np.log10(initial_dens), crir, isrf, b_field)
     #workerfunctions.plot_uclchem(shock_model, observed_data["species"], plotfile)
 
-    # Average the quantities across the dissipation region
-    # (i.e. the time that we've evolved the model for)
-    T = workerfunctions.resolved_quantity(
-        shock_model["dens"],
-        shock_model["temp"],
-        shock_model["times"]
-    )
+    if len(shock_model["times"]) <= 2:
+        trial_data["rj_flux"] = len(observed_data["species"])*[np.inf]
+    else:
 
-    n = workerfunctions.resolved_quantity(
-        shock_model["dens"],
-        shock_model["dens"],
-        shock_model["times"]
-    )
-
-    # Save those quantities to the dict lists
-    trial_data["resolved_T"] = T
-    trial_data["resolved_n"] = n
-
-    print("T={0}".format(T))
-    print("n={0}".format(n))   
- 
-    for spec_indx, spec in enumerate(observed_data["species"]):    
-        
-        # Store the species
-        trial_data['species'].append(spec)
-
-        # Get the abundances
-        abund = shock_model["abundances"][spec_indx]
-        
-        # Set the column density
-        N = workerfunctions.resolved_quantity(
+        # Average the quantities across the dissipation region
+        # (i.e. the time that we've evolved the model for)
+        T = workerfunctions.resolved_quantity(
             shock_model["dens"],
-            [a*b for a, b in zip(shock_model["H_coldens"], abund)],
+            shock_model["temp"],
             shock_model["times"]
         )
-        
-        # Amend the H2CS column density to account for ortho-to-para ratio
-        # i.e. we're interested in ortho
-        if spec == "H2CS":
-            spec = "oH2CS"
-            # Ortho to para ratio (statistical value of 3:1)
-            o_p = 3/4
-            N = N*o_p
 
-        # Amends CH3OH transition
-        if spec == "CH3OH":
-            spec = "a-CH3OH"
-            # E/A ratio (assume equal ratio according to Wirstrom et al)
-            e_a = 1/2
-            N = N*e_a
+        n = workerfunctions.resolved_quantity(
+            shock_model["dens"],
+            shock_model["dens"],
+            shock_model["times"]
+        )
 
-        print("N_{0} = {1}".format(spec, N))
+        # Save those quantities to the dict lists
+        trial_data["resolved_T"] = T
+        trial_data["resolved_n"] = n
 
-        trial_data["N"].append(N)
+        print("T={0}".format(T))
+        print("n={0}".format(n))   
+    
+        for spec_indx, spec in enumerate(observed_data["species"]):    
+            
+            # Store the species
+            trial_data['species'].append(spec)
 
-        # Get the linewidth and relevant transition
-        dv = observed_data["linewidths"][spec_indx]
-        transition = observed_data["transitions"][spec_indx]
+            # Get the abundances
+            abund = shock_model["abundances"][spec_indx]
+            
+            # Set the column density
+            N = workerfunctions.resolved_quantity(
+                shock_model["dens"],
+                [a*b for a, b in zip(shock_model["H_coldens"], abund)],
+                shock_model["times"]
+            )
+            
+            # Amend the H2CS column density to account for ortho-to-para ratio
+            # i.e. we're interested in ortho
+            if spec == "H2CS":
+                spec = "oH2CS"
+                # Ortho to para ratio (statistical value of 3:1)
+                o_p = 3/4
+                N = N*o_p
 
-        # Store the transitions
-        trial_data['transitions'].append(transition)
+            # Amends CH3OH transition
+            if spec == "CH3OH":
+                spec = "a-CH3OH"
+                # E/A ratio (assume equal ratio according to Wirstrom et al)
+                e_a = 1/2
+                N = N*e_a
 
-        print("Writing the radex inputs")
-        input_path = '{0}/radex-input/{1}/n1e{2:.2}T{3}N1e{4:.2}.inp'.format(DIREC, spec, n, T, N)
-        output_path = '{0}/radex-output/{1}/n1e{2:.2}T{3}N1e{4:.2}.out'.format(DIREC, spec, n, T, N)
-        
-        # Write the radex input file
-        write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=303, f_max=305)
+            print("N_{0} = {1}".format(spec, N))
 
-        print("Running radex")
-        # Run radex
-        shell_output = sp.run(
-            'radex < {0}'.format(input_path), 
-            shell=True,
-            capture_output=True,
-            check=True
-        ) 
+            trial_data["N"].append(N)
 
-        # shell_output is in bytes, so decode and split to array
-        shell_output = shell_output.stdout.decode("ascii").split()
+            # Get the linewidth and relevant transition
+            dv = observed_data["linewidths"][spec_indx]
+            transition = observed_data["transitions"][spec_indx]
 
-        # This block ensures that the output file exists before attempting to read it
-        while not os.path.exists(output_path):
-            time.sleep(1)
-            print("Waiting for {0}".format(output_path))
-        if os.path.isfile(output_path):
-            # Read the radex output
-            radex_output = read_radex_output(spec, transition, output_path)
-        else:
-            raise ValueError("%s isn't a file!" % output_path)
+            # Store the transitions
+            trial_data['transitions'].append(transition)
 
-        # Catch any radex saturation problems
-        try:
-            radex_output["rj_flux"] = float(radex_output["rj_flux"])
-        except ValueError:
-            radex_output["rj_flux"] = np.inf
+            print("Writing the radex inputs")
+            input_path = '{0}/radex-input/{1}/n{2:2E}T{3:2E}N{4:2E}.inp'.format(DIREC, spec, n, T, N)
+            output_path = '{0}/radex-output/{1}/n{2:2E}T{3:2E}N{4:2E}.out'.format(DIREC, spec, n, T, N)
 
-        if radex_output["rj_flux"] < 0 or radex_output["rj_flux"] > 100:
-            radex_output["rj_flux"] = np.inf
+            # Write the radex input file
+            # This block ensures that the output file exists before attempting to read it
+            '''
+            while not os.path.exists(input_path):
+                time.sleep(1)
+                print("Waiting for {0}".format(input_path))
+            if os.path.isfile(input_path):
+                write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=303, f_max=305)
+            else:
+                raise ValueError("%s isn't a file!" % input_path)
+            '''
 
-        # Append the radex output data to the trial_data dictionary
-        trial_data['rj_flux'].append(radex_output["rj_flux"])
+            write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=303, f_max=305)            
+
+            print("Running radex...")
+
+            # Run radex
+            shell_output = sp.run(
+                'radex < {0}'.format(input_path), 
+                capture_output=True,
+                shell=True
+            ) 
+
+            # Check for any non-convergence in radex
+            # shell_output is in bytes, so decode and split to array
+            shell_output = shell_output.stdout.decode("ascii").split()
+            if "9999" in shell_output:
+                print("Radex did not converge")
+                radex_output["rj_flux"] = np.inf
+            else:
+                '''
+                # This block ensures that the output file exists before attempting to read it
+                while not os.path.exists(output_path):
+                    time.sleep(1)
+                    print("Waiting for {0}".format(output_path))
+                if os.path.isfile(output_path):
+                    # Read the radex output
+                    radex_output = read_radex_output(spec, transition, output_path)
+                else:
+                    raise ValueError("%s isn't a file!" % output_path)
+                '''
+                # Read the radex output
+                radex_output = read_radex_output(spec, transition, output_path)
+
+                # Catch any radex saturation problems
+                try:
+                    radex_output["rj_flux"] = float(radex_output["rj_flux"])
+                except ValueError:
+                    radex_output["rj_flux"] = np.inf
+
+                if radex_output["rj_flux"] < 0 or radex_output["rj_flux"] > 100:
+                    radex_output["rj_flux"] = np.inf
+
+                # Append the radex output data to the trial_data dictionary
+                trial_data['rj_flux'].append(radex_output["rj_flux"])
 
     return trial_data
 
@@ -350,10 +377,10 @@ def ln_radex_prior(x):
 # prior probability function 
 def ln_shock_prior(x):
     # velocity
-    if x[0]<20 or x[0]>45:
+    if x[0]<5 or x[0]>30:
         return False
     # density (log space)
-    elif x[1]<3 or x[1]>6:
+    elif x[1]<3 or x[1]>8:
         return False
     # B-field
     elif x[2]<-6 or x[2]>-3:
@@ -408,8 +435,6 @@ def ln_likelihood_radex(x, observed_data, bestfit_config_file, DIREC, RADEX_PATH
             "source_rj_flux_error": observed_data['source_rj_flux_error'],
             "chi": chi
         }
-
-        print("data={0}".format(data))
 
         print("Inserting the chain data (and other quantities) in to the database")
         # Save the best fit data for each species

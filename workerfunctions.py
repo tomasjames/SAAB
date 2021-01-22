@@ -262,9 +262,6 @@ def plot_uclchem(model, species, plotfile):
     # Save the files
     fig.savefig(plotfile)
 
-    # Close plot
-    # plt.close()
-
     return 
 
 
