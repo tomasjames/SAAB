@@ -32,7 +32,7 @@ import workerfunctions
 
 def param_select(params):
     if params['vs']:
-        params['vs'] = random.uniform(10, 40)
+        params['vs'] = random.uniform(5, 30)
     if params['initial_dens']:
         params['initial_dens'] = random.uniform(3, 8)
     if params['b_field']:
@@ -109,7 +109,6 @@ if __name__ == '__main__':
                         (len(obs["species"]) >= 2 and "OCS" in obs["species"]) or \
                             (len(obs["species"]) >= 2 and "H2CS" in obs["species"]):
 
-            print(obs["source"])
             if obs["source"] == "K13a" or obs["source"] == "G2":
                 print("Source = {}".format(obs["source"]))
             else:
@@ -184,7 +183,7 @@ if __name__ == '__main__':
 
             print("Running the emcee sampler")
             sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_shock,
-                                         args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), pool=Pool(24))
+                            args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), pool=Pool(24))
             pos = []
 
             # Select the parameters
@@ -197,16 +196,12 @@ if __name__ == '__main__':
                     'isrf': True,
                 })
 
-                print(params)
-
                 # Iterate through those lists to find entries that
                 # are still marked as False (and not required)
                 pos_list = [x for x in params.values() if x != False]
 
                 # Append the correct params to the params list
                 pos.append(pos_list)
-
-            print(obs["source"])
 
             # Split the chain in to 100 chunks, each 1% of the total size and write out
             nBreak = int(nSteps/1e2)
