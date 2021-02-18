@@ -32,9 +32,9 @@ import workerfunctions
 
 def param_select(params):
     if params['vs']:
-        params['vs'] = random.uniform(5, 30)
+        params['vs'] = random.uniform(5, 20)
     if params['initial_dens']:
-        params['initial_dens'] = random.uniform(3, 8)
+        params['initial_dens'] = random.uniform(3, 5)
     if params['b_field']:
         params['b_field'] = random.uniform(-6, -3) # B-field in gauss
     if params['crir']:
@@ -109,7 +109,7 @@ if __name__ == '__main__':
                         (len(obs["species"]) >= 2 and "OCS" in obs["species"]) or \
                             (len(obs["species"]) >= 2 and "H2CS" in obs["species"]):
 
-            if obs["source"] == "K13a" or obs["source"] == "G2":
+            if obs["source"] == "K13a" or obs["source"] == "G2" or obs["source"] == "G5":
                 print("Source = {}".format(obs["source"]))
             else:
                 continue
@@ -183,7 +183,11 @@ if __name__ == '__main__':
 
             print("Running the emcee sampler")
             sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_shock,
-                            args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), pool=Pool(24))
+                            args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), pool=Pool(12))
+            
+            #sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_shock,
+            #                args=(obs, db_bestfit_pool, DIREC, RADEX_PATH))
+
             pos = []
 
             # Select the parameters

@@ -109,6 +109,12 @@ if __name__ == '__main__':
         data = list(reader)
         f.close()
 
+    # Remove OCS from K13a
+    for element in data:
+        print(element)
+        if element[0] == "K13a" and "OCS" in element[-5]:
+            data.remove(element)
+
     # Parse the data to a dict list
     observed_data = workerfunctions.parse_data(data, db_radex_pool, db_bestfit_pool)
     
@@ -126,17 +132,17 @@ if __name__ == '__main__':
                         (len(obs["species"]) >= 2 and "OCS" in obs["species"]) or \
                             (len(obs["species"]) >= 2 and "H2CS" in obs["species"]):
            
-            print("source={0}".format(obs["source"])) 
+            #print("source={0}".format(obs["source"])) 
             #'''
             #start_index = next((index for (index, d) in enumerate(filtered_data) if d["source"] == "L20"), None)
             #if obs_indx < start_index:
             #    continue
-            if obs["source"] == "L16" or obs["source"] == "L17":
+            if obs["source"] == "K13a":
                 print("Source is {}".format(obs["source"]))
             else:
                 #print("Source is {}".format(obs["source"]))
                 continue
-            ''' 
+            '''     
             #Checks to see whether the tables exists; if so, delete it
             if db.does_table_exist(db_pool=db_radex_pool, table=obs["source"]):
                 #continue
