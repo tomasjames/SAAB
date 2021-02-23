@@ -85,7 +85,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
         'transitions': [],
         'resolved_T': 0,
         'resolved_n': 0,
-        'N': [],
+        'resolved_N': [],
         'rj_flux': []
     }
 
@@ -98,7 +98,6 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     # Convert to time
     t_diss = (dlength/(vs*1e5))/(60*60*24*365)
     
-    # file_name = "n{0:.2E}z{1:.2E}r{2:.2E}b{3:.2E}".format(initial_dens, crir, isrf, b_field)
     file_name = "n{0:.2E}".format(initial_dens)
 
     phase1 = {
@@ -135,28 +134,19 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
         "collapse": 0,
         "readAbunds": 1,
         "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
-        "outputFile": "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.1}z1e{3:.1}r1e{4:.1}b1e{5:.1}.dat".format(DIREC, vs, initial_dens, crir, isrf, b_field)
+        "outputFile": "{0}/UCLCHEM/output/data/v{1:.2}n{2:.2E}z{3:.1E}r{4:.1E}b{5:.1E}.dat".format(DIREC, vs, initial_dens, crir, isrf, b_field)
     }
     
+    # UCLCHEM requires species to be space delimited string
+    species = " ".join([str(spec) for spec in observed_data["species"]])
+
     # Run the UCLCHEM model up to the dissipation length time analogue
-    shock_model = workerfunctions.run_uclchem(phase1, phase2, observed_data["species"], DIREC)
-
-    while not os.path.exists(phase2["outputFile"]):
-        time.sleep(1)
-        print("Waiting for {0}".format(phase2["outputFile"]))
-    if os.path.isfile(phase2["outputFile"]):
-        print("UCLCHEM model {0} complete".format(phase2["outputFile"]))
-    else:
-        raise ValueError("%s isn't a file!" % phase2["outputFile"])    
-
-    # # Plot the UCLCHEM plots
-    #plotfile = "{0}/UCLCHEM/output/data/v{1:.2}n1e{2:.2}z{3:.2E}r{4:.2E}B{5:.2E}.png".format(DIREC, vs, np.log10(initial_dens), crir, isrf, b_field)
-    #workerfunctions.plot_uclchem(shock_model, observed_data["species"], plotfile)
+    shock_model = workerfunctions.run_uclchem(phase1, phase2, species)
 
     if len(shock_model["times"]) <= 2:
+        print("More time steps required for this model")
         trial_data["rj_flux"] = len(observed_data["species"])*[np.inf]
     else:
-
         # Average the quantities across the dissipation region
         # (i.e. the time that we've evolved the model for)
         T = workerfunctions.resolved_quantity(
@@ -176,7 +166,9 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
         trial_data["resolved_n"] = n
 
         print("T={0}".format(T))
+        print("vs={0}".format(vs))
         print("n={0}".format(n))   
+        print("phase2[outputFile]={0}".format(phase2["outputFile"]))
     
         for spec_indx, spec in enumerate(observed_data["species"]):    
             
@@ -210,7 +202,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
 
             print("N_{0} = {1}".format(spec, N))
 
-            trial_data["N"].append(N)
+            trial_data["resolved_N"].append(N)
 
             # Get the linewidth and relevant transition
             dv = observed_data["linewidths"][spec_indx]
@@ -219,26 +211,16 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
             # Store the transitions
             trial_data['transitions'].append(transition)
 
+            print("trial_data={0}".format(trial_data))
+
             print("Writing the radex inputs")
-            input_path = '{0}/radex-input/{1}/n{2:2E}T{3:2E}N{4:2E}.inp'.format(DIREC, spec, n, T, N)
-            output_path = '{0}/radex-output/{1}/n{2:2E}T{3:2E}N{4:2E}.out'.format(DIREC, spec, n, T, N)
+            input_path = '{0}/radex-input/{1}/n{2:.1E}T{3:.1}N{4:.1E}.inp'.format(DIREC, spec, n, T, N)
+            output_path = '{0}/radex-output/{1}/n{2:.1E}T{3:.1}N{4:.1E}.out'.format(DIREC, spec, n, T, N)
 
             # Write the radex input file
-            # This block ensures that the output file exists before attempting to read it
-            '''
-            while not os.path.exists(input_path):
-                time.sleep(1)
-                print("Waiting for {0}".format(input_path))
-            if os.path.isfile(input_path):
-                write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=303, f_max=305)
-            else:
-                raise ValueError("%s isn't a file!" % input_path)
-            '''
-
-            write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=303, f_max=305)            
+            write_radex_input(spec, n, T, n, N, dv, input_path, output_path, RADEX_PATH, f_min=303, f_max=305)
 
             print("Running radex...")
-
             # Run radex
             shell_output = sp.run(
                 'radex < {0}'.format(input_path), 
@@ -248,36 +230,26 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
 
             # Check for any non-convergence in radex
             # shell_output is in bytes, so decode and split to array
-            shell_output = shell_output.stdout.decode("ascii").split()
-            if "9999" in shell_output:
-                print("Radex did not converge")
+            shell_out = shell_output.stdout.decode("ascii").split()
+            shell_error = shell_output.stderr.decode("ascii").split()
+
+            if shell_error:
                 radex_output["rj_flux"] = np.inf
             else:
-                '''
-                # This block ensures that the output file exists before attempting to read it
-                while not os.path.exists(output_path):
-                    time.sleep(1)
-                    print("Waiting for {0}".format(output_path))
-                if os.path.isfile(output_path):
-                    # Read the radex output
-                    radex_output = read_radex_output(spec, transition, output_path)
-                else:
-                    raise ValueError("%s isn't a file!" % output_path)
-                '''
                 # Read the radex output
                 radex_output = read_radex_output(spec, transition, output_path)
 
-                # Catch any radex saturation problems
-                try:
-                    radex_output["rj_flux"] = float(radex_output["rj_flux"])
-                except ValueError:
-                    radex_output["rj_flux"] = np.inf
+            # Catch any radex saturation problems
+            try:
+                radex_output["rj_flux"] = float(radex_output["rj_flux"])
+            except ValueError:
+                radex_output["rj_flux"] = np.inf
 
-                if radex_output["rj_flux"] < 0 or radex_output["rj_flux"] > 100:
-                    radex_output["rj_flux"] = np.inf
+            if radex_output["rj_flux"] < 0 or radex_output["rj_flux"] > 100:
+                radex_output["rj_flux"] = np.inf
 
-                # Append the radex output data to the trial_data dictionary
-                trial_data['rj_flux'].append(radex_output["rj_flux"])
+            # Append the radex output data to the trial_data dictionary
+            trial_data['rj_flux'].append(radex_output["rj_flux"])
 
     return trial_data
 
@@ -464,6 +436,7 @@ def ln_likelihood_shock(x, observed_data, bestfit_db_connection, DIREC, RADEX_PA
         print("Parameters within prior range")
         #call radex to determine flux of given transitions
         trial_data = get_trial_shock_data(y, observed_data, DIREC, RADEX_PATH)
+
     
         print("Computing chi-squared statistic")
         # Determine chi-squared statistic and write it to file
@@ -486,7 +459,7 @@ def ln_likelihood_shock(x, observed_data, bestfit_db_connection, DIREC, RADEX_PA
             "b_field": 10**x[2],
             "crir": 10**x[3],
             "isrf": 10**x[4],
-            "column_density": trial_data['N'],
+            "column_density": trial_data['resolved_N'],
             "resolved_T": trial_data['resolved_T'], 
             "resolved_n": trial_data['resolved_n'], 
             "rj_flux": trial_data['rj_flux'],
