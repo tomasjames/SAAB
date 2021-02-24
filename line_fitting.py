@@ -28,7 +28,7 @@ with open("{0}/data/tabula-sio_intratio.csv".format(DIREC), newline='') as f:
 # Remove header row
 data.remove(data[0])
 
-source_names = np.array(data)[0:, 0]
+source_names = np.array([entry[0] for entry in data])
 source_names = np.char.upper(source_names)
 
 # Define line colour
@@ -41,12 +41,10 @@ for file in files:
     if source_name == "3" or source_name == "5":
         continue
     x_vals, flux_density = np.loadtxt(file, skiprows=8, unpack=True)
-    print("source={0}".format(source_name))
     flux_density = flux_density*1e3 # Convert to mJy
     
     # Get Marc's fit
     existing_sources_indx = [i for i, x in enumerate(list(source_names)) if x == source_name]
-    # existing_sources = data[existing_sources_indx[0]:existing_sources_indx[-1]]
 
     intensities = []
 
@@ -55,7 +53,14 @@ for file in files:
         linewidth_kms = float(data[source][-2])
         peak_flux_density = float(data[source][-4][:data[source][-4].index("±")])
         species = data[source][4]
-        print(species)
+        
+        print("source={0}".format(source_name))
+        print("vel_lsr={0}".format(vel_lsr))
+        print("linewidth_kms={0}".format(linewidth_kms))
+        print("peak_flux_density={0}".format(peak_flux_density))
+        print("species={0}".format(species))
+        print("\n")
+
         if species == "SiO 7–6":
             line_freq = 303.92696000
         if species == "OCS 25–24":
@@ -69,11 +74,14 @@ for file in files:
 
         # Check to see whether file is in frequency or velocity space
         if x_vals[0] > 0:
+            # print("In frequency space")
             obs_freqs = x_vals
             velocities = ((line_freq/obs_freqs) - 1.0)*3e5
+            
         elif x_vals[0] < 0:
+            # print("In velocity space")
             velocities = x_vals
-            obs_freqs = line_freq/(((velocities)/3e5) + 1.0)
+            obs_freqs = line_freq/((velocities/3e5) + 1.0)
             
         # Get fraction of max intensity in each bin
         fracs = np.exp(-4.0*np.log(2.0)*(((velocities-vel_lsr)**2.0)/(linewidth_kms**2)))
@@ -88,7 +96,7 @@ for file in files:
         else:
             spectra = intensity
 
-        plt.annotate(species, xy=(line_freq, peak_flux_density*1.04), xycoords="data", size=8)
+        plt.annotate(species, xy=(obs_freqs[list(intensity).index(np.max(intensity))], peak_flux_density*1.04), xycoords="data", size=8)
 
     plt.plot(obs_freqs, spectra, color=colour)
     plt.plot(obs_freqs, flux_density, color="b",alpha=0.3, linewidth=0.4, label="Raw spectra")

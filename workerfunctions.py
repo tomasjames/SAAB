@@ -185,24 +185,25 @@ def get_r_out(n):
     
     return r_out
 
-def run_uclchem(phase1, phase2, species, DIREC):
+def run_uclchem(phase1, phase2, species):
 
-    print("Running UCLCHEM")
+    print("\n Running UCLCHEM..")
     # Check if phase 1 exists (as n is the only important factor here)
-    print("Running phase 1")
+    print("\t Running phase 1...")
     uclchem.wrap.run_model_to_file(phase1, species)
-        
-    print("Running phase 2")
-    print(phase2)
-    #Run UCLCHEM
+    print("\t Phase 1 complete \n")
+    
+    print("\t Running phase 2...")
     uclchem.wrap.run_model_to_file(phase2, species)
+    print("\t Phase 2 complete \n")
 
-    print("UCLCHEM run complete")
-    print("Reading UCLCHEM output")
-    data = plotfunctions.read_uclchem("{0}".format(phase2["outputFile"]))
+    print("UCLCHEM run complete \n Reading UCLCHEM output...")
+    data = plotfunctions.read_uclchem("{0}".format(phase2["outputFile"])) 
     times, dens, temp, abundances = list(data["Time"]), list(data["Density"]), list(data["gasTemp"]), []   
 
-    for spec in species:
+    for spec in species.split(): # split() required as species is a string
+        print("spec={0}".format(spec))
+        print("data[spec]={0}".format(data[spec]))
         abundances.append(data[spec])
 
     # Determine the H column density through the shock
@@ -261,6 +262,9 @@ def plot_uclchem(model, species, plotfile):
 
     # Save the files
     fig.savefig(plotfile)
+
+    # Close plot
+    # plt.close()
 
     return 
 

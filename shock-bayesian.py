@@ -30,6 +30,10 @@ import databasefunctions as db
 import inference
 import workerfunctions
 
+# Avoids any problems with implicit parallelisation of 
+# numpy functions
+os.environ["OMP_NUM_THREADS"] = "1"
+
 def param_select(params):
     if params['vs']:
         params['vs'] = random.uniform(5, 20)
@@ -99,7 +103,7 @@ if __name__ == '__main__':
     filtered_data = workerfunctions.filter_data(observed_data, relevant_species)
     nWalkers = 500 # Number of random walkers to sample parameter space
     nDim = 5 # Number of dimensions within the parameters
-    nSteps = int(1e4) # Number of steps per walker
+    nSteps = int(1e3) # Number of steps per walker
     
 
     for obs in filtered_data:
@@ -183,7 +187,7 @@ if __name__ == '__main__':
 
             print("Running the emcee sampler")
             sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_shock,
-                            args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), pool=Pool(12))
+                            args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), pool=Pool(24))
             
             #sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_shock,
             #                args=(obs, db_bestfit_pool, DIREC, RADEX_PATH))
@@ -208,7 +212,7 @@ if __name__ == '__main__':
                 pos.append(pos_list)
 
             # Split the chain in to 100 chunks, each 1% of the total size and write out
-            nBreak = int(nSteps/1e2)
+            nBreak = int(100)
             for counter in range(nBreak):
                 sampler.reset()  # Reset the chain
 
