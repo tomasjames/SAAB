@@ -1,4 +1,6 @@
 import glob
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import os
 from statistics import mean
@@ -8,6 +10,9 @@ import time
 import config
 import databasefunctions as db
 import workerfunctions
+
+# Get current backend to restore post-plot
+default_backend = mpl.get_backend()
 
 
 def get_trial_radex_data(params, observed_data, DIREC, RADEX_PATH):
@@ -142,6 +147,14 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
 
     # Run the UCLCHEM model up to the dissipation length time analogue
     shock_model = workerfunctions.run_uclchem(phase1, phase2, species)
+
+    # Plot UCLCHEM model
+    mpl.use("Agg") # Switch to X-server less backend to ensure plot can run without login
+    plotfile = "{0}/UCLCHEM/output/plots/v{1:.2}n{2:.2E}z{3:.1E}r{4:.1E}b{5:.1E}.pdf".format(DIREC, vs, initial_dens, crir, isrf, b_field)
+    print("Plotting {0}".format(format(plotfile)))
+    workerfunctions.plot_uclchem(shock_model, observed_data["species"], plotfile)
+    print("Plotting {0} complete".format(format(format(plotfile))))
+    mpl.use(default_backend) # Restore backend to avoid problems
 
     if len(shock_model["times"]) <= 2:
         print("More time steps required for this model")

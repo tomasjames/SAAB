@@ -23,8 +23,6 @@ import emcee as mc
 import math
 import random
 
-import matplotlib.pyplot as plt
-
 import config as config
 import databasefunctions as db
 import inference
@@ -189,9 +187,6 @@ if __name__ == '__main__':
             sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_shock,
                             args=(obs, db_bestfit_pool, DIREC, RADEX_PATH), pool=Pool(24))
             
-            #sampler = mc.EnsembleSampler(nWalkers, nDim, inference.ln_likelihood_shock,
-            #                args=(obs, db_bestfit_pool, DIREC, RADEX_PATH))
-
             pos = []
 
             # Select the parameters
