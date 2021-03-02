@@ -103,17 +103,18 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     # Convert to time
     t_diss = (dlength/(vs*1e5))/(60*60*24*365)
     
-    file_name = "n{0:.2E}".format(initial_dens)
+    file_name = "n{2:.2E}z{3:.1E}r{4:.1E}b{5:.1E}".format(initial_dens, crir, isrf, b_field)
 
     phase1 = {
+        "initialTemp": 60,
         "initialDens": 1e2,
         "finalDens": initial_dens,
         "finalTime": 2e7,
         "rout": workerfunctions.get_r_out(initial_dens),
         "switch": 1,
-        # "zeta": crir,
-        # "radfield": isrf,
-        # "B0": b_field,
+        "zeta": crir,
+        "radfield": isrf,
+        "B0": b_field,
         "fr": 1.0,
         "desorb": 0,
         "phase": 1,
@@ -124,6 +125,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     }
 
     phase2 = {
+        "initialTemp": 60,
         "initialDens": initial_dens,
         "finalDens": 2*initial_dens,
         "finalTime": t_diss,
@@ -142,17 +144,20 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
         "outputFile": "{0}/UCLCHEM/output/data/v{1:.2}n{2:.2E}z{3:.1E}r{4:.1E}b{5:.1E}.dat".format(DIREC, vs, initial_dens, crir, isrf, b_field)
     }
     
-    # UCLCHEM requires species to be space delimited string
-    species = " ".join([str(spec) for spec in observed_data["species"]])
+    # Get the frozen version of species
+    frozen = ["#{0}".format(spec) for spec in observed_data["species"]]
+
+    # Combine both species and frozen
+    all_species = observed_data["species"] + frozen
 
     # Run the UCLCHEM model up to the dissipation length time analogue
-    shock_model = workerfunctions.run_uclchem(phase1, phase2, species)
+    shock_model = workerfunctions.run_uclchem(phase1, phase2, " ".join([str(spec) for spec in all_species]))
 
     # Plot UCLCHEM model
     mpl.use("Agg") # Switch to X-server less backend to ensure plot can run without login
     plotfile = "{0}/UCLCHEM/output/plots/v{1:.2}n{2:.2E}z{3:.1E}r{4:.1E}b{5:.1E}.pdf".format(DIREC, vs, initial_dens, crir, isrf, b_field)
     print("Plotting {0}".format(format(plotfile)))
-    workerfunctions.plot_uclchem(shock_model, observed_data["species"], plotfile)
+    workerfunctions.plot_uclchem(shock_model, all_species, plotfile)
     print("Plotting {0} complete".format(format(format(plotfile))))
     mpl.use(default_backend) # Restore backend to avoid problems
 

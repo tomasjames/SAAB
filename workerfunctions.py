@@ -227,19 +227,28 @@ def plot_uclchem(model, species, plotfile):
     H_coldens = [cloud_size*b for b in model["dens"]]
 
     # Set up the plot    
-    fig, ax = plt.subplots(3, figsize=(8, 8))
+    if species[-1][0] == "#":
+        figs = 3
+    else:
+        figs = 2
+    
+    fig, ax = plt.subplots(figs, figsize=(8, 8))
 
-    # Twin the last axis
-    ax2 = ax[2].twinx()
+    # Twin the last axis and the first
+    ax_first_twin = ax[0].twinx()
+    ax_final_twin = ax[-1].twinx()
 
     # Plot abundances
     for spec_indx, spec_name in enumerate(species):
-        ax[0].loglog(model["times"], model["abundances"][spec_indx], label=spec_name)
-        ax[1].loglog(model["times"], [a*b for (a,b) in zip(H_coldens, model["abundances"][spec_indx])], label=spec_name)
+        if spec_name[0] != "#":
+            ax[0].loglog(model["times"], model["abundances"][spec_indx], label=spec_name)
+            ax_first_twin.loglog(model["times"], [a*b for (a,b) in zip(H_coldens, model["abundances"][spec_indx])], alpha=0.2, linestyle=":")
+        if spec_name[0] == "#":
+            ax[1].loglog(model["times"], model["abundances"][spec_indx], label=spec_name)
 
     # Plot temp and dens
-    ax[2].loglog(model["times"], model["dens"], linestyle="--", color="r", label="n$_{H}$")
-    ax2.loglog(model["times"], model["temp"], linestyle=":", color="g", label="T")
+    ax[-1].loglog(model["times"], model["dens"], linestyle="--", color="r", label="n$_{H}$")
+    ax_final_twin.loglog(model["times"], model["temp"], linestyle=":", color="g", label="T")
 
     # Remove ticks from axis 0 and 1
     ax[0].set_xticks([])
@@ -248,14 +257,17 @@ def plot_uclchem(model, species, plotfile):
     # Plot legends
     for axis in ax:
         axis.legend(loc='best', fontsize='small')
-    ax2.legend(loc='best', fontsize='small')
+    ax_first_twin.legend(loc='best', fontsize='small')
+    ax_final_twin.legend(loc='best', fontsize='small')
     
     # Set labels
     ax[0].set_ylabel("X$_{Species}$")
-    ax[1].set_ylabel("N$_{Species}$ [cm$^{-2}$]")
-    ax[2].set_ylabel("n$_{H}$ [cm$^{-3}$]", color="r")
-    ax2.set_ylabel("T [K]", color="g")
-    ax[2].set_xlabel('t [yrs]')
+    ax_first_twin.set_ylabel("N$_{Species}$ [cm$^{-2}$]")
+    if figs == 3:
+        ax[1].set_ylabel("X$_{Species}$")
+    ax[-1].set_ylabel("n$_{H}$ [cm$^{-3}$]", color="r")
+    ax_final_twin.set_ylabel("T [K]", color="g")
+    ax[-1].set_xlabel('t [yrs]')
 
     # Compress the plot
     plt.tight_layout()
