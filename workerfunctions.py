@@ -220,11 +220,8 @@ def run_uclchem(phase1, phase2, species):
 
 def plot_uclchem(model, species, plotfile):
 
-    # Determine the cloud size in cm
-    cloud_size = get_r_out(model["dens"][0])*3.086e18
-
-    # Determine the H column density
-    H_coldens = [cloud_size*b for b in model["dens"]]
+    # Determine the H2 column density
+    H_coldens = 0.5*abund(nh2, dstep)*density(dstep)*(cloudSize/real(points))
 
     # Set up the plot    
     if species[-1][0] == "#":
@@ -255,10 +252,10 @@ def plot_uclchem(model, species, plotfile):
     ax[1].set_xticks([])
 
     # Plot legends
-    for axis in ax:
+    for axis in ax[:-1]:
         axis.legend(loc='best', fontsize='small')
-    ax_first_twin.legend(loc='best', fontsize='small')
-    ax_final_twin.legend(loc='best', fontsize='small')
+    # ax_first_twin.legend(loc='best', fontsize='small')
+    # ax_final_twin.legend(loc='best', fontsize='small')
     
     # Set labels
     ax[0].set_ylabel("X$_{Species}$")

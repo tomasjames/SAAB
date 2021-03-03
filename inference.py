@@ -97,16 +97,16 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     # Unpack the parameters
     vs, initial_dens, b_field, crir, isrf = params[0], params[1], params[2], params[3], params[4]
 
-    # Determine the dissipation length
+    # Determine the dissipation length in cm
     dlength = 12.0*3.08e18*vs/initial_dens
 
     # Convert to time
     t_diss = (dlength/(vs*1e5))/(60*60*24*365)
     
-    file_name = "n{2:.2E}z{3:.1E}r{4:.1E}b{5:.1E}".format(initial_dens, crir, isrf, b_field)
+    file_name = "n{0:.2E}z{1:.1E}r{2:.1E}b{3:.1E}".format(initial_dens, crir, isrf, b_field)
 
     phase1 = {
-        "initialTemp": 60,
+        "initialTemp": 30,
         "initialDens": 1e2,
         "finalDens": initial_dens,
         "finalTime": 2e7,
@@ -125,7 +125,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     }
 
     phase2 = {
-        "initialTemp": 60,
+        "initialTemp": 30,
         "initialDens": initial_dens,
         "finalDens": 2*initial_dens,
         "finalTime": t_diss,
