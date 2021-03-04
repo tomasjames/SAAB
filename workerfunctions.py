@@ -28,7 +28,7 @@ def supress_stdout(func):
     return wrapper
 
 
-def parse_data(data, db_pool, db_bestfit_pool):
+def parse_data(data):
     """
     Parses the data from the data list in to a 
     dict list for access by the inference script. Also
@@ -209,43 +209,50 @@ def run_uclchem(phase1, phase2, species):
     # Determine the H column density through the shock
     coldens = [phase2["rout"]*(3e18)*n_i for n_i in dens]
 
+    # Read the velocity file
+    vels = np.loadtxt(phase2["velocityFile"])
+
     return {
         "times": times,
         "dens": dens,
         "temp": temp,
         "abundances": abundances,
-        "H_coldens": coldens
+        "H_coldens": coldens,
+        "zn": vels[:,1],
+        "vn": vels[:,2],
+        "vi": vels[:,3]
     }
 
 
 def plot_uclchem(model, species, plotfile):
-
-    # Determine the H2 column density
-    H_coldens = 0.5*abund(nh2, dstep)*density(dstep)*(cloudSize/real(points))
-
-    # Set up the plot    
-    if species[-1][0] == "#":
-        figs = 3
-    else:
-        figs = 2
     
-    fig, ax = plt.subplots(figs, figsize=(8, 8))
+    fig, ax = plt.subplots(3, figsize=(8, 8))
 
     # Twin the last axis and the first
     ax_first_twin = ax[0].twinx()
     ax_final_twin = ax[-1].twinx()
 
+    dist_cm = [dist/3.08e18 for dist in model["zn"]]
+
     # Plot abundances
     for spec_indx, spec_name in enumerate(species):
-        if spec_name[0] != "#":
-            ax[0].loglog(model["times"], model["abundances"][spec_indx], label=spec_name)
-            ax_first_twin.loglog(model["times"], [a*b for (a,b) in zip(H_coldens, model["abundances"][spec_indx])], alpha=0.2, linestyle=":")
-        if spec_name[0] == "#":
-            ax[1].loglog(model["times"], model["abundances"][spec_indx], label=spec_name)
+        ax[0].loglog(dist_cm, model["abundances"][spec_indx], label=spec_name)
+        ax_first_twin.loglog(dist_cm, [a*b for (a, b) in zip(model["H_coldens"], model["abundances"][spec_indx])], alpha=0.2, linestyle=":")
+
+    # Plot velocities
+    ax[1].loglog(dist_cm, model["vn"], label="v$_{n}$")
+    ax[1].loglog(dist_cm, model["vi"], label="v$_{i}$")
+    # ax[1].loglog(dist_cm, model["vn"])
+    # ax[1].loglog(dist_cm, model["vi"])
 
     # Plot temp and dens
-    ax[-1].loglog(model["times"], model["dens"], linestyle="--", color="r", label="n$_{H}$")
-    ax_final_twin.loglog(model["times"], model["temp"], linestyle=":", color="g", label="T")
+    dens_plot = ax_final_twin.loglog(dist_cm, model["dens"], linestyle="--", color="r", label="n$_{H}$")
+    temp_plot = ax[-1].loglog(dist_cm, model["temp"], linestyle=":", color="g", label="T")
+
+    # added these three lines
+    plots = dens_plot + temp_plot
+    labs = [p.get_label() for p in plots]
+    ax[-1].legend(plots, labs, loc=0)
 
     # Remove ticks from axis 0 and 1
     ax[0].set_xticks([])
@@ -260,20 +267,16 @@ def plot_uclchem(model, species, plotfile):
     # Set labels
     ax[0].set_ylabel("X$_{Species}$")
     ax_first_twin.set_ylabel("N$_{Species}$ [cm$^{-2}$]")
-    if figs == 3:
-        ax[1].set_ylabel("X$_{Species}$")
-    ax[-1].set_ylabel("n$_{H}$ [cm$^{-3}$]", color="r")
-    ax_final_twin.set_ylabel("T [K]", color="g")
-    ax[-1].set_xlabel('t [yrs]')
+    ax[1].set_ylabel("v$_{fluid}$ [km s$^{-1}$]")
+    ax[-1].set_ylabel("T [K]", color="g")
+    ax_final_twin.set_ylabel("n$_{H}$ [cm$^{-3}$]", color="r")
+    ax[-1].set_xlabel('d [pc]')
 
     # Compress the plot
     plt.tight_layout()
 
     # Save the files
     fig.savefig(plotfile)
-
-    # Close plot
-    # plt.close()
 
     return 
 

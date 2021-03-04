@@ -94,7 +94,7 @@ if __name__ == '__main__':
         f.close()
 
     # Parse the data to a dict list
-    observed_data = workerfunctions.parse_data(data, db_pool, db_bestfit_pool)
+    observed_data = workerfunctions.parse_data(data)
     
     # Filter the observed data to contain only those species that we can use
     # (normally limited by those with Radex data)

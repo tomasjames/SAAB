@@ -7,7 +7,6 @@ from statistics import mean
 import subprocess as sp
 import time
 
-import config
 import databasefunctions as db
 import workerfunctions
 
@@ -141,14 +140,16 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
         "collapse": 0,
         "readAbunds": 1,
         "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
-        "outputFile": "{0}/UCLCHEM/output/data/v{1:.2}n{2:.2E}z{3:.1E}r{4:.1E}b{5:.1E}.dat".format(DIREC, vs, initial_dens, crir, isrf, b_field)
+        "outputFile": "{0}/UCLCHEM/output/data/v{1:.2}n{2:.2E}z{3:.1E}r{4:.1E}b{5:.1E}.dat".format(DIREC, vs, initial_dens, crir, isrf, b_field),
+        "velocityFile": "{0}/UCLCHEM/output/data/velocity_v{1:.2}n{2:.2E}.dat".format(DIREC, vs, initial_dens, crir, isrf, b_field)
     }
     
     # Get the frozen version of species
     frozen = ["#{0}".format(spec) for spec in observed_data["species"]]
 
     # Combine both species and frozen
-    all_species = observed_data["species"] + frozen
+    # all_species = observed_data["species"] + frozen
+    all_species = observed_data["species"]
 
     # Run the UCLCHEM model up to the dissipation length time analogue
     shock_model = workerfunctions.run_uclchem(phase1, phase2, " ".join([str(spec) for spec in all_species]))
