@@ -39,7 +39,7 @@ pointing_center = [
     SkyCoord('17h45m41.32', '-29d01m01.63'),
 ]
 
-pointing_name = ["N", "G", "D", "H", "J", "K", "L", "M"]
+pointing_name = ["N", "A", "D", "H", "J", "K", "L", "M"]
 
 pointing_color = ["deepskyblue", "mediumspringgreen", "firebrick", "gold", "steelblue", "lemonchiffon", "magenta", "cyan"]
 

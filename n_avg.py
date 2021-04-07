@@ -26,7 +26,6 @@ plt.style.use(astropy_mpl_style)
 
 # Define constants
 DIREC = os.getcwd()
-pointing = "L"
 
 m_H_kg = 1.6735326381e-27
 m_H2_kg = 2*m_H_kg
@@ -72,10 +71,10 @@ fig1 = plt.figure(figsize=(18, 18))
 
 source_name = ""
 
-for indx, entry in enumerate(data[1:]):  # data[0] is the header row
+# Set up chain
+c = ChainConsumer()
 
-    if entry[0][0] != pointing or entry[0] == source_name:
-        continue
+for indx, entry in enumerate(data[1:]):  # data[0] is the header row
 
     source_name = entry[0]
     print("source_name={0}".format(source_name))
@@ -84,9 +83,6 @@ for indx, entry in enumerate(data[1:]):  # data[0] is the header row
     radius_angle = (float(entry[3])*np.deg2rad(0.37/3600))/2
     radius_pc = radius_angle*7861.2597
     radius_cm = radius_pc*3.086e+18  # Distance to Sgr A* from pc to cm
-
-    # Set up chain
-    c = ChainConsumer()
 
     # Read in the data for the given source
     best_fit_data = db.get_bestfit(
@@ -169,28 +165,4 @@ for indx, entry in enumerate(data[1:]):  # data[0] is the header row
     else:
         print("Not star forming gas :(")
 
-norm = matplotlib.colors.Normalize(
-    vmin=min(N_SIO+N_SIO_trans), vmax=max(N_SIO+N_SIO_trans), clip=True)
-mapper = matplotlib.cm.ScalarMappable(norm=norm, cmap='viridis')
-color = np.array([(mapper.to_rgba(v)) for v in n])
-color_trans = np.array([(mapper.to_rgba(v)) for v in n_trans])
 
-# Plot the whole data to establish the colorbar
-sc = plt.scatter(T+T_trans, n+n_trans, c=N_SIO+N_SIO_trans)
-clb = plt.colorbar(sc, orientation=("vertical"))
-clb.set_label(label="N"+r"$_{\mathrm{SiO}}$"+"[cm$^{-2}$]", fontsize=20)
-clb.ax.tick_params(labelsize=18)
-
-#loop over each data point to plot
-for x, y, col in zip(T_trans, n_trans, color_trans):
-    plt.plot(x, y, 'o', color=col)
-
-for x, y, x_lower, x_upper, y_lower, y_upper, col in zip(T, n, T_lower, T_upper, n_lower, n_upper, color):
-    # plt.plot(x, y, 'o', color=col)
-    plt.plot(np.linspace(x, x, 2),np.linspace(y_lower, y_upper, 2), lw=1, color=col)
-    plt.plot(np.linspace(x_lower, x_upper, 2), np.linspace(y, y, 2), lw=1, color=col)
-
-plt.xlabel("T [K]", fontsize=20)
-plt.ylabel("n [cm$^{-3}$]", fontsize=20)
-plt.savefig("{0}/data/images/n_vs_T.png".format(DIREC))
-plt.close()

@@ -36,13 +36,13 @@ def param_select(params):
     if params['vs']:
         params['vs'] = random.uniform(5, 20)
     if params['initial_dens']:
-        params['initial_dens'] = random.uniform(3, 5)
+        params['initial_dens'] = random.uniform(3, 6)
     if params['b_field']:
         params['b_field'] = random.uniform(-6, -3) # B-field in gauss
     if params['crir']:
-        params['crir'] = random.uniform(1, 2) # Cosmic ray ionisation rate (zeta in UCLCHEM)
+        params['crir'] = random.uniform(0, 2) # Cosmic ray ionisation rate (zeta in UCLCHEM)
     if params['isrf']:
-        params['isrf'] = random.uniform(1, 2) # Interstellar radiation field  (radfield in UCLCHEM)
+        params['isrf'] = random.uniform(0, 2) # Interstellar radiation field  (radfield in UCLCHEM)
 
     return params
 
@@ -227,8 +227,7 @@ if __name__ == '__main__':
 
                 for i in range(0, nWalkers):
                     for j in range(0, nBreak):
-                        db.insert_shock_chain_data(
-                            db_pool=db_pool, table=obs["source"], chain=chain[i][j], column_names=column_names)
+                        db.insert_shock_chain_data(db_pool=db_pool, table=obs["source"], chain=chain[i][j])
 
                 if counter == 0:
                     full_chain = np.vstack(chain)

@@ -113,7 +113,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
         "switch": 1,
         "zeta": crir,
         "radfield": isrf,
-        "B0": b_field,
+        "bm0": b_field,
         "fr": 1.0,
         "desorb": 0,
         "phase": 1,
@@ -133,7 +133,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
         "switch": 0,
         "zeta": crir,
         "radfield": isrf,
-        "B0": b_field,
+        "bm0": b_field,
         "fr": 0.0,
         "desorb": 1,
         "phase": 2,
@@ -200,7 +200,7 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
             # Set the column density
             N = workerfunctions.resolved_quantity(
                 shock_model["dens"],
-                [a*b for a, b in zip(shock_model["H_coldens"], abund)],
+                shock_model["coldens"][spec_indx],
                 shock_model["times"]
             )
             
@@ -368,19 +368,19 @@ def ln_radex_prior(x):
 # prior probability function 
 def ln_shock_prior(x):
     # velocity
-    if x[0]<5 or x[0]>30:
+    if x[0]<5 or x[0]>20:
         return False
     # density (log space)
-    elif x[1]<3 or x[1]>8:
+    elif x[1]<3 or x[1]>5:
         return False
     # B-field
-    elif x[2]<-6 or x[2]>-3:
+    elif x[2]< -6 or x[2]> -3:
         return False
     # Cosmic ray ionisation rate
-    elif x[3]<1 or x[3]>2:
+    elif x[3]<0 or x[3]>2:
         return False
     # Radiation field
-    elif x[4]<1 or x[4]>2:
+    elif x[4]<0 or x[4]>2:
         return False
     else:
         return True

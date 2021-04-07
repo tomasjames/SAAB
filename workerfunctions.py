@@ -199,15 +199,16 @@ def run_uclchem(phase1, phase2, species):
 
     print("UCLCHEM run complete \n Reading UCLCHEM output...")
     data = plotfunctions.read_uclchem("{0}".format(phase2["outputFile"])) 
-    times, dens, temp, abundances = list(data["Time"]), list(data["Density"]), list(data["gasTemp"]), []   
+    times, dens, temp, av, coldens, abundances = list(data["Time"]), list(data["Density"]), list(data["gasTemp"]), list(data["av"]), [], []   
 
     for spec in species.split(): # split() required as species is a string
         print("spec={0}".format(spec))
         print("data[spec]={0}".format(data[spec]))
         abundances.append(data[spec])
+        coldens.append(data[spec]*av*1.6e21) # See Eq. 2 of https://www.aanda.org/articles/aa/pdf/2014/07/aa23010-13.pdf
 
     # Determine the H column density through the shock
-    coldens = [phase2["rout"]*(3e18)*n_i for n_i in dens]
+    # coldens = [phase2["rout"]*(3e18)*n_i for n_i in dens]
 
     # Read the velocity file
     vels = np.loadtxt(phase2["velocityFile"])
@@ -217,7 +218,8 @@ def run_uclchem(phase1, phase2, species):
         "dens": dens,
         "temp": temp,
         "abundances": abundances,
-        "H_coldens": coldens,
+        "av": av,
+        "coldens": coldens,
         "zn": vels[:,1],
         "vn": vels[:,2],
         "vi": vels[:,3]
@@ -232,22 +234,23 @@ def plot_uclchem(model, species, plotfile):
     ax_first_twin = ax[0].twinx()
     ax_final_twin = ax[-1].twinx()
 
-    dist_cm = [dist/3.08e18 for dist in model["zn"]]
+    dist_pc = [dist/3.08e18 for dist in model["zn"]]
 
     # Plot abundances
     for spec_indx, spec_name in enumerate(species):
-        ax[0].loglog(dist_cm, model["abundances"][spec_indx], label=spec_name)
-        ax_first_twin.loglog(dist_cm, [a*b for (a, b) in zip(model["H_coldens"], model["abundances"][spec_indx])], alpha=0.2, linestyle=":")
+        ax[0].loglog(dist_pc, model["abundances"][spec_indx], label=spec_name)
+        # ax_first_twin.loglog(dist_cm, [a*b for (a, b) in zip(model["H_coldens"], model["abundances"][spec_indx])], alpha=0.2, linestyle=":")
+        ax_first_twin.loglog(dist_pc, model["coldens"][spec_indx], label=spec_name, alpha=0.2, linestyle=":")
 
     # Plot velocities
-    ax[1].loglog(dist_cm, model["vn"], label="v$_{n}$")
-    ax[1].loglog(dist_cm, model["vi"], label="v$_{i}$")
+    ax[1].loglog(dist_pc, model["vn"], label="v$_{n}$")
+    ax[1].loglog(dist_pc, model["vi"], label="v$_{i}$")
     # ax[1].loglog(dist_cm, model["vn"])
     # ax[1].loglog(dist_cm, model["vi"])
 
     # Plot temp and dens
-    dens_plot = ax_final_twin.loglog(dist_cm, model["dens"], linestyle="--", color="r", label="n$_{H}$")
-    temp_plot = ax[-1].loglog(dist_cm, model["temp"], linestyle=":", color="g", label="T")
+    dens_plot = ax_final_twin.loglog(dist_pc, model["dens"], linestyle="--", color="r", label="n$_{H}$")
+    temp_plot = ax[-1].loglog(dist_pc, model["temp"], linestyle=":", color="g", label="T")
 
     # added these three lines
     plots = dens_plot + temp_plot
