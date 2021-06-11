@@ -105,6 +105,32 @@ def insert_shock_chain_data(db_pool, table, chain):
             db_pool.putconn(conn)
 
 
+def insert_static_chain_data(db_pool, table, chain):
+    """ insert multiple vendors into the vendors table  """
+    sql = "INSERT INTO {0} (id, dens, B_field, crir, isrf) VALUES (DEFAULT, {1}, {2}, {3}, {4});".format(
+        table, chain[0], chain[1], chain[2], chain[3])
+    conn = None
+    try:
+        # connect to the PostgreSQL server
+        # Use getconn() to Get Connection from connection pool
+        conn = db_pool.getconn()
+        # create a new cursor
+        cur = conn.cursor()
+        # execute the INSERT statement
+        cur.execute(sql, table)
+        # commit the changes to the database
+        conn.commit()
+        # close communication with the database
+        # cur.close()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+    finally:
+        if conn is not None:
+            conn.close()
+            # Release the connection object back to the pool
+            db_pool.putconn(conn)
+
+
 def insert_data(db_pool, table, data):
     """ insert multiple vendors into the vendors table  """
     sql = """INSERT INTO {0} (id, species, transitions, temp, dens, column_density, radex_flux, source_flux, source_flux_error, chi_squared) VALUES ( DEFAULT, ARRAY {1}, ARRAY {2}, {3}, {4}, ARRAY {5}, ARRAY {6}, ARRAY {7}, ARRAY {8}, {9} );""".format(
@@ -136,6 +162,32 @@ def insert_shock_data(db_pool, table, data):
     """ insert multiple vendors into the vendors table  """
     sql = """INSERT INTO {0} (id, species, transitions, vs, dens, b_field, crir, isrf, column_density, resolved_T, resolved_n, radex_flux, source_flux, source_flux_error, chi_squared) VALUES ( DEFAULT, ARRAY {1}, ARRAY {2}, {3}, {4}, {5}, {6}, {7}, ARRAY {8}, {9}, {10}, ARRAY {11}, ARRAY {12}, ARRAY {13}, {14} );""".format(
         table, data["species"], data["transitions"], data["vs"], data["dens"], data["b_field"], data["crir"], data["isrf"], data["column_density"], data["resolved_T"], data["resolved_n"], data["rj_flux"], data["source_rj_flux"], data["source_rj_flux_error"], data["chi"])
+    conn = None
+    try:
+        # connect to the PostgreSQL server
+        # Use getconn() to Get Connection from connection pool
+        conn = db_pool.getconn()
+        # create a new cursor
+        cur = conn.cursor()
+        # execute the INSERT statement
+        cur.execute(sql, table)
+        # commit the changes to the database
+        conn.commit()
+        # close communication with the database
+        # cur.close()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+    finally:
+        if conn is not None:
+            conn.close()
+            # Release the connection object back to the pool
+            db_pool.putconn(conn)
+
+
+def insert_static_data(db_pool, table, data):
+    """ insert multiple vendors into the vendors table  """
+    sql = """INSERT INTO {0} (id, species, transitions, dens, b_field, crir, isrf, column_density, resolved_T, resolved_n, radex_flux, source_flux, source_flux_error, chi_squared) VALUES ( DEFAULT, ARRAY {1}, ARRAY {2}, {3}, {4}, {5}, {6}, ARRAY {7}, {8}, {9}, ARRAY {10}, ARRAY {11}, ARRAY {12}, {13} );""".format(
+        table, data["species"], data["transitions"], data["dens"], data["b_field"], data["crir"], data["isrf"], data["column_density"], data["resolved_T"], data["resolved_n"], data["rj_flux"], data["source_rj_flux"], data["source_rj_flux_error"], data["chi"])
     conn = None
     try:
         # connect to the PostgreSQL server

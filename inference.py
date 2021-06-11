@@ -273,6 +273,197 @@ def get_trial_shock_data(params, observed_data, DIREC, RADEX_PATH):
     return trial_data
 
 
+def get_trial_static_data(params, observed_data, DIREC, RADEX_PATH):
+
+    # Declare dictionary to hold trial data
+    trial_data = {
+        'species': [],
+        'transitions': [],
+        'resolved_T': 0,
+        'resolved_n': 0,
+        'resolved_N': [],
+        'rj_flux': []
+    }
+
+    # Unpack the parameters
+    initial_dens, b_field, crir, isrf = params[0], params[1], params[2], params[3]
+
+    file_name = "n{0:.2E}z{1:.1E}r{2:.1E}b{3:.1E}".format(
+        initial_dens, crir, isrf, b_field)
+
+    phase1 = {
+        "initialTemp": 30,
+        "initialDens": 1e2,
+        "finalDens": initial_dens,
+        "finalTime": 2e7,
+        "rout": workerfunctions.get_r_out(initial_dens),
+        "switch": 1,
+        "zeta": crir,
+        "radfield": isrf,
+        "bm0": b_field,
+        "fr": 1.0,
+        "desorb": 0,
+        "phase": 1,
+        "collapse": 1,
+        "readAbunds": 0,
+        "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
+        "outputFile": "{0}/UCLCHEM/output/start/full_{1}.dat".format(DIREC, file_name)
+    }
+
+    phase2 = {
+        "initialTemp": 30,
+        "initialDens": initial_dens,
+        "finalDens": 2*initial_dens,
+        "finalTime": 1e6,
+        "rout": workerfunctions.get_r_out(initial_dens),
+        "switch": 0,
+        "zeta": crir,
+        "radfield": isrf,
+        "bm0": b_field,
+        "fr": 0.0,
+        "desorb": 1,
+        "phase": 2,
+        "collapse": 0,
+        "readAbunds": 1,
+        "abundFile": "{0}/UCLCHEM/output/start/{1}.dat".format(DIREC, file_name),
+        "outputFile": "{0}/UCLCHEM/output/data/n{1:.2E}z{2:.1E}r{3:.1E}b{4:.1E}.dat".format(DIREC, initial_dens, crir, isrf, b_field),
+        "velocityFile": "{0}/UCLCHEM/output/data/velocity_n{1:.2E}.dat".format(DIREC, initial_dens, crir, isrf, b_field)
+    }
+
+    # Get the frozen version of species
+    frozen = ["#{0}".format(spec) for spec in observed_data["species"]]
+
+    # Combine both species and frozen
+    # all_species = observed_data["species"] + frozen
+    all_species = observed_data["species"]
+
+    # Run the UCLCHEM model up to the dissipation length time analogue
+    static_model = workerfunctions.run_uclchem(
+        phase1, phase2, " ".join([str(spec) for spec in all_species]))
+
+    # Plot UCLCHEM model
+    # Switch to X-server less backend to ensure plot can run without login
+    mpl.use("Agg")
+    plotfile = "{0}/UCLCHEM/output/plots/n{1:.2E}z{2:.1E}r{3:.1E}b{4:.1E}.pdf".format(DIREC, initial_dens, crir, isrf, b_field)
+    print("Plotting {0}".format(format(plotfile)))
+    workerfunctions.plot_static_uclchem(static_model, all_species, plotfile)
+    print("Plotting {0} complete".format(format(format(plotfile))))
+    mpl.use(default_backend)  # Restore backend to avoid problems
+
+    if len(static_model["times"]) <= 2:
+        print("More time steps required for this model")
+        trial_data["rj_flux"] = len(observed_data["species"])*[np.inf]
+    else:
+        # Average the quantities across the dissipation region
+        # (i.e. the time that we've evolved the model for)
+        T = workerfunctions.resolved_quantity(
+            static_model["dens"],
+            static_model["temp"],
+            static_model["times"]
+        )
+
+        n = workerfunctions.resolved_quantity(
+            static_model["dens"],
+            static_model["dens"],
+            static_model["times"]
+        )
+
+        # Save those quantities to the dict lists
+        trial_data["resolved_T"] = T
+        trial_data["resolved_n"] = n
+
+        print("T={0}".format(T))
+        print("n={0}".format(n))
+        print("phase2[outputFile]={0}".format(phase2["outputFile"]))
+
+        for spec_indx, spec in enumerate(observed_data["species"]):
+
+            # Store the species
+            trial_data['species'].append(spec)
+
+            # Get the abundances
+            abund = static_model["abundances"][spec_indx]
+
+            # Set the column density
+            N = workerfunctions.resolved_quantity(
+                static_model["dens"],
+                static_model["coldens"][spec_indx],
+                static_model["times"]
+            )
+
+            # Amend the H2CS column density to account for ortho-to-para ratio
+            # i.e. we're interested in ortho
+            if spec == "H2CS":
+                spec = "oH2CS"
+                # Ortho to para ratio (statistical value of 3:1)
+                o_p = 3/4
+                N = N*o_p
+
+            # Amends CH3OH transition
+            if spec == "CH3OH":
+                spec = "a-CH3OH"
+                # E/A ratio (assume equal ratio according to Wirstrom et al)
+                e_a = 1/2
+                N = N*e_a
+
+            print("N_{0} = {1}".format(spec, N))
+
+            trial_data["resolved_N"].append(N)
+
+            # Get the linewidth and relevant transition
+            dv = observed_data["linewidths"][spec_indx]
+            transition = observed_data["transitions"][spec_indx]
+
+            # Store the transitions
+            trial_data['transitions'].append(transition)
+
+            print("trial_data={0}".format(trial_data))
+
+            print("Writing the radex inputs")
+            input_path = '{0}/radex-input/{1}/n{2:.1E}T{3:.1}N{4:.1E}.inp'.format(
+                DIREC, spec, n, T, N)
+            output_path = '{0}/radex-output/{1}/n{2:.1E}T{3:.1}N{4:.1E}.out'.format(
+                DIREC, spec, n, T, N)
+
+            # Write the radex input file
+            write_radex_input(spec, n, T, n, N, dv, input_path,
+                              output_path, RADEX_PATH, f_min=303, f_max=305)
+
+            print("Running radex...")
+            # Run radex
+            shell_output = sp.run(
+                'radex < {0}'.format(input_path),
+                capture_output=True,
+                shell=True
+            )
+
+            # Check for any non-convergence in radex
+            # shell_output is in bytes, so decode and split to array
+            shell_out = shell_output.stdout.decode("ascii").split()
+            shell_error = shell_output.stderr.decode("ascii").split()
+
+            if shell_error:
+                radex_output["rj_flux"] = np.inf
+            else:
+                # Read the radex output
+                radex_output = read_radex_output(spec, transition, output_path)
+
+            # Catch any radex saturation problems
+            try:
+                radex_output["rj_flux"] = float(radex_output["rj_flux"])
+            except ValueError:
+                radex_output["rj_flux"] = np.inf
+
+            if radex_output["rj_flux"] < 0 or radex_output["rj_flux"] > 100:
+                radex_output["rj_flux"] = np.inf
+
+            # Append the radex output data to the trial_data dictionary
+            trial_data['rj_flux'].append(radex_output["rj_flux"])
+
+    return trial_data
+
+
+
 # Function to write the input to run Radex
 def write_radex_input(spec, ns, tkin, nh2, N, dv, input_path, output_path, RADEX_PATH, f_min, f_max):
     tbg=2.73
@@ -381,6 +572,23 @@ def ln_shock_prior(x):
         return False
     # Radiation field
     elif x[4]<0 or x[4]>2:
+        return False
+    else:
+        return True
+
+
+def ln_static_prior(x):
+    # density (log space)
+    if x[0]<3 or x[0]>5:
+        return False
+    # B-field
+    elif x[1]< -6 or x[1]> -3:
+        return False
+    # Cosmic ray ionisation rate
+    elif x[2]<0 or x[2]>2:
+        return False
+    # Radiation field
+    elif x[3]<0 or x[3]>2:
         return False
     else:
         return True
@@ -498,6 +706,64 @@ def ln_likelihood_shock(x, observed_data, bestfit_db_connection, DIREC, RADEX_PA
         
         return -0.5*chi
     
+    else:
+        return -np.inf
+
+
+def ln_likelihood_static(x, observed_data, bestfit_db_connection, DIREC, RADEX_PATH):
+
+    # Pack the parameters in to the y array for emcee
+    # 0 is n (initial density), 1 is B-field, 2 is crir and 3 is rad field
+    y = [10**x[0], 10**x[1], 10**x[2], 10**x[3]]
+
+    # Checks to see whether the randomly selected values of x are within
+    # the desired range using ln_shock_prior
+    if ln_static_prior(x):
+
+        print("Parameters within prior range")
+        #call radex to determine flux of given transitions
+        trial_data = get_trial_static_data(y, observed_data, DIREC, RADEX_PATH)
+
+        print("Computing chi-squared statistic")
+        # Determine chi-squared statistic and write it to file
+        chi = chi_squared(trial_data['rj_flux'],
+                          observed_data['source_rj_flux'],
+                          observed_data['source_rj_flux_error']
+                          )
+
+        if trial_data['rj_flux'] == np.inf:
+            print("Radex has potentially saturated")
+            trial_data['rj_flux'] = "Infinity"
+            return -np.inf
+
+        # Put the data in to a dictionary for easier reference when storing
+        data = {
+            "species": trial_data['species'],
+            "transitions": trial_data['transitions'],
+            "dens": 10**x[0],
+            "b_field": 10**x[1],
+            "crir": 10**x[2],
+            "isrf": 10**x[3],
+            "column_density": trial_data['resolved_N'],
+            "resolved_T": trial_data['resolved_T'],
+            "resolved_n": trial_data['resolved_n'],
+            "rj_flux": trial_data['rj_flux'],
+            "source_rj_flux": observed_data['source_rj_flux'],
+            "source_rj_flux_error": observed_data['source_rj_flux_error'],
+            "chi": chi
+        }
+
+        print("Inserting the chain data (and other quantities) in to the database")
+
+        # Save the best fit data for each species
+        db.insert_static_data(
+            db_pool=bestfit_db_connection,
+            table="{0}_bestfit_conditions".format(observed_data["source"]),
+            data=data
+        )
+
+        return -0.5*chi
+
     else:
         return -np.inf
 

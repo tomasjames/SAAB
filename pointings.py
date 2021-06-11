@@ -39,7 +39,7 @@ pointing_center = [
     SkyCoord('17h45m41.32', '-29d01m01.63'),
 ]
 
-pointing_name = ["N", "A", "D", "H", "J", "K", "L", "M"]
+pointing_name = ["N", "G", "D", "H", "J", "K", "L", "M"]
 
 pointing_color = ["deepskyblue", "mediumspringgreen", "firebrick", "gold", "steelblue", "lemonchiffon", "magenta", "cyan"]
 
@@ -63,7 +63,7 @@ pixel_height = sgrA_dist*np.deg2rad((max_y_pos - origin_y_pos)/len(image_data[0]
 ############################## Plot the data ############################
 
 # Initialize figure
-fig = plt.figure(figsize=(14, 20))
+fig = plt.figure(figsize=(12, 18))
 ax = plt.subplot(projection=w, label="overlays")
 plt.grid(color='w', linestyle='-', linewidth=1)
 
